@@ -5,7 +5,9 @@ import requests
 
 client = genai.Client()
 
+# この部分はGUIで指定するつもりなので、main.py側に記載がいいかもしれない
 illustration_collar = '''ここに画像にどのような色を付けるか指定する文章を入れるようにする'''
+
 prompt = (
     '''Using the provided image of my rough drawing, please create a detailed and polished illustration in the style of a high-quality anime. 
     Please use the following colors for the final image.
@@ -13,6 +15,7 @@ prompt = (
 )
 
 # 画像のアスペクト比と解像度を指定。この辺りはいったん任意でいいかも
+# この部分はGUIで指定するつもりなので、main.py側に記載がいいかもしれない
 aspect_ratio = "5:4" # "1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"
 resolution = "2K" # "1K", "2K", "4K"
 
