@@ -1,4 +1,3 @@
-# oauth.py
 from __future__ import annotations
 
 import streamlit as st
@@ -9,16 +8,17 @@ def _build_credentials_from_secrets() -> dict:
     '''st.secrets から streamlit-authenticator 用の credentials を組み立てる。'''
     users_conf = st.secrets["auth"]["users"]
 
-    # streamlit_authenticator が要求する形式に変換
-    credentials = {"usernames": {}}
+    credentials: dict = {"usernames": {}}
 
     for key, user in users_conf.items():
-        # username は secrets 側で明示してもいいし、キー名(key)をそのまま使ってもよい
+        # secrets 側に username があればそれを優先。なければ key を使う
         username = user.get("username", key)
 
-        # 平文パスワード → 実行時にハッシュ化
-        raw_password = user["password"]
-        hashed_password = stauth.Hasher([raw_password]).generate()[0]
+        # secrets.toml には「平文パスワード」を置く想定
+        raw_password: str = user["password"]
+
+        # ★ 0.4.2 の正しい API：Hasher.hash()
+        hashed_password: str = stauth.Hasher.hash(raw_password)
 
         credentials["usernames"][username] = {
             "name": user["name"],
@@ -30,7 +30,6 @@ def _build_credentials_from_secrets() -> dict:
 
 
 def _create_authenticator() -> stauth.Authenticate:
-    '''st.secrets を元に Authenticate インスタンスを生成する。'''
     credentials = _build_credentials_from_secrets()
     cookie_conf = st.secrets["auth"]["cookie"]
 
@@ -44,22 +43,29 @@ def _create_authenticator() -> stauth.Authenticate:
 
 
 def require_login():
-    '''ログインが成功するまで以降の処理を実行させない。成功したら (name, username, authenticator) を返す。'''
+    '''ログインしていなければここで止める。成功したら (name, username, authenticator) を返す。'''
     authenticator = _create_authenticator()
-    name, auth_status, username = authenticator.login("ログイン", "main")
+
+    # ★ 0.4.2 の login は戻り値ではなく session_state に書き込む
+    try:
+        authenticator.login(location="main")
+    except Exception as e:
+        st.error(f"ログイン処理でエラーが発生しました: {e}")
+        st.stop()
+
+    auth_status = st.session_state.get("authentication_status")
+    name = st.session_state.get("name")
+    username = st.session_state.get("username")
 
     if auth_status:
-        # サイドバーにログイン情報とログアウトボタンを出す
         st.sidebar.write(f"ログイン中: {name}")
-        authenticator.logout("ログアウト", "sidebar")
+        authenticator.logout("ログアウト", location="sidebar")
         return name, username, authenticator
 
     elif auth_status is False:
         st.error("ユーザー名かパスワードが違います")
-        # 認証失敗時点でアプリ本体は止める
         st.stop()
 
     else:
-        # まだ何も入力していない状態など
-        st.info("機能を利用するにはログインしてください。")
+        st.info("機能を利用するにはユーザー名とパスワードを入力してください。")
         st.stop()

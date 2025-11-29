@@ -3,16 +3,18 @@ from __future__ import annotations
 import textwrap
 
 import streamlit as st
-from oauth import require_login # 追加：認証モジュールを読み込む
 from PIL import Image
 import os
 
+from oauth import require_login  # 認証モジュール
 from illust import generate_image
 
-# ここでログインを強制する（ここより下は認証済みユーザーのみ実行される）
+# 最初に呼ぶ
+st.set_page_config(page_title="ラフ絵 to イラスト", page_icon=":art:")
+
+# ここでログインを強制（この下は認証済ユーザーのみ）
 name, username, authenticator = require_login()
 
-st.set_page_config(page_title="ラフ絵 to イラスト", page_icon=":art:")
 st.title("ラフ絵から完成イラストを生成")
 st.write(
     "ラフ絵とカラー指定、任意のアスペクト比・解像度を入力して Nano Banana(Gemini API) に送信します。"
@@ -36,7 +38,10 @@ def build_prompt(color_instruction: str, pose_instruction: str) -> str:
         {pose}
         """
     ).strip()
-    return base_prompt.format(colors=color_instruction.strip() or "No specific colors were provided.", pose=pose_instruction.strip() or "Please maintain the pose of the original image.")
+    return base_prompt.format(
+        colors=color_instruction.strip() or "No specific colors were provided.",
+        pose=pose_instruction.strip() or "Please maintain the pose of the original image.",
+    )
 
 
 with st.form(key="illustration_form", clear_on_submit=False):
@@ -56,9 +61,8 @@ with st.form(key="illustration_form", clear_on_submit=False):
         st.image(
             Image.open(uploaded_file),
             caption="アップロードしたラフ絵",
-            width="stretch"
+            width="stretch",
         )
-        
 
     submitted = st.form_submit_button("イラスト生成")
 
