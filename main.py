@@ -43,7 +43,7 @@ with st.form(key="illustration_form", clear_on_submit=False):
     resolution_label = st.selectbox("解像度（任意）", options=RESOLUTION_OPTIONS, index=0)
 
     if uploaded_file:
-        st.image(Image.open(uploaded_file), caption="アップロードしたラフ絵", use_column_width=True)
+        st.image(Image.open(uploaded_file), caption="アップロードしたラフ絵", use_container_width=True)
 
     submitted = st.form_submit_button("イラスト生成")
 
@@ -74,7 +74,7 @@ if submitted:
                 st.error(f"画像生成に失敗しました: {exc}")
             else:
                 st.success("イラストの生成が完了しました。")
-                st.image(generated.image, caption="生成されたイラスト", use_column_width=True)
+                st.image(generated.image, caption="生成されたイラスト", use_container_width=True)
                 st.download_button(
                     label="生成画像をダウンロード (PNG)",
                     data=generated.raw_bytes,
