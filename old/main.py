@@ -6,7 +6,7 @@ import streamlit as st
 from PIL import Image
 import os
 
-from oauth import require_login  # 認証モジュール
+from old.oauth import require_login  # 認証モジュール
 from illust import generate_image
 
 # 最初に呼ぶ
