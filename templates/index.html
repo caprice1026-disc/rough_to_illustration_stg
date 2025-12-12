@@ -1,26 +1,139 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="row">
-  <div class="col-lg-6 mb-4">
-    <div class="card shadow-sm">
+<style>
+  .upload-dropzone {
+    border: 1px dashed rgba(255, 255, 255, 0.35);
+    border-radius: 16px;
+    padding: 16px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.06);
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .upload-dropzone.hover {
+    border-color: var(--accent);
+    background: rgba(31, 209, 249, 0.08);
+  }
+  .preview-image {
+    max-height: 260px;
+    border-radius: 12px;
+    object-fit: contain;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #dfe5ff;
+    font-size: 0.92rem;
+  }
+  .option-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(31, 209, 249, 0.12);
+    border: 1px solid rgba(31, 209, 249, 0.3);
+    color: #b8ecff;
+    font-size: 0.9rem;
+  }
+  .meta-label { color: #a8b3d7; font-size: 0.95rem; }
+  .loading-bar {
+    height: 4px;
+    width: 100%;
+    background: linear-gradient(90deg, rgba(124, 77, 255, 0.5), rgba(31, 209, 249, 0.7));
+    border-radius: 999px;
+    animation: shimmer 1.2s infinite;
+  }
+  @keyframes shimmer {
+    0% { filter: brightness(0.8); }
+    50% { filter: brightness(1.35); }
+    100% { filter: brightness(0.8); }
+  }
+</style>
+
+<div class="row align-items-center g-4 mb-4">
+  <div class="col-lg-8">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <span class="badge badge-soft">リアルタイムプレビュー</span>
+      <span class="badge badge-soft">文字数カウンタ</span>
+      <span class="badge badge-soft">ローディング表示</span>
+    </div>
+    <h1 class="hero-title mb-2">ラフ絵をアップロードして、ワンクリックで彩色・仕上げ</h1>
+    <p class="subtle-text mb-3">色とポーズの指示を添えて、Gemini に高品質なイラスト化を依頼します。プレビューで確認しながら安心して送信できます。</p>
+    <div class="d-flex flex-wrap gap-2">
+      <div class="pill"><i class="bi bi-magic"></i> ブラシアップと欠損補完</div>
+      <div class="pill"><i class="bi bi-cloud-upload"></i> 画像はセッションだけに保存</div>
+      <div class="pill"><i class="bi bi-lightning-charge"></i> プロンプト自動組み立て</div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="glass-card p-3 h-100">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <div class="text-uppercase text-white-50 small">進行ステータス</div>
+          <div class="fw-bold">入力 → 生成 → ダウンロード</div>
+        </div>
+        <i class="bi bi-rocket-takeoff fs-3 text-info"></i>
+      </div>
+      <p class="subtle-text mb-1"><i class="bi bi-shield-check me-1"></i> ログインユーザーのみ利用可能</p>
+      <p class="subtle-text mb-2"><i class="bi bi-hdd-network me-1"></i> APIキーは環境変数から読み込み</p>
+      <div class="loading-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card glass-card h-100">
       <div class="card-body">
-        <h2 class="card-title mb-3">ラフ絵から完成イラストを生成</h2>
-        <p class="text-muted">ラフ絵と色・ポーズの指示、任意のアスペクト比や解像度を指定してNano Banana(Gemini API)へ送信します。</p>
-        <form method="post" enctype="multipart/form-data">
-          <div class="mb-3">
-            <label class="form-label" for="rough_image">ラフ絵（PNG/JPG/JPEG）</label>
-            <input class="form-control" type="file" id="rough_image" name="rough_image" accept="image/png, image/jpeg" required>
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h2 class="card-title mb-0">生成リクエスト</h2>
+          <span class="option-chip"><i class="bi bi-check2-circle"></i> ステップ 1</span>
+        </div>
+        <form id="generateForm" method="post" enctype="multipart/form-data" class="d-flex flex-column gap-3">
+          <div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label mb-0" for="rough_image">ラフ絵（PNG/JPG/JPEG）</label>
+              <small class="text-white-50">最大3MB推奨</small>
+            </div>
+            <div id="uploadDropzone" class="upload-dropzone">
+              <div id="uploadPlaceholder" class="subtle-text mb-2">画像をドラッグ＆ドロップ、または下のボタンから選択</div>
+              <img id="previewImage" class="preview-image d-none mb-2" alt="プレビュー画像">
+              <div id="fileMeta" class="small text-white-50 mb-2"></div>
+              <div class="d-flex justify-content-center gap-2">
+                <label class="btn btn-outline-light btn-sm" for="rough_image"><i class="bi bi-folder2-open me-1"></i> ファイルを選択</label>
+                <button class="btn btn-outline-light btn-sm" type="button" id="clearImage" aria-label="画像をクリア"><i class="bi bi-x-lg"></i></button>
+              </div>
+            </div>
+            <input class="form-control mt-2" type="file" id="rough_image" name="rough_image" accept="image/png, image/jpeg">
           </div>
-          <div class="mb-3">
-            <label class="form-label" for="color_instruction">着色イメージや雰囲気</label>
-            <textarea class="form-control" id="color_instruction" name="color_instruction" rows="3">帽子は赤、服は白ベースで差し色に青、肌は柔らかい色味でお願いします。</textarea>
+
+          <div>
+            <div class="d-flex justify-content-between align-items-center">
+              <label class="form-label" for="color_instruction">着色イメージや雰囲気</label>
+              <small id="colorCounter" class="text-white-50">0/200</small>
+            </div>
+            <textarea class="form-control" id="color_instruction" name="color_instruction" rows="3" maxlength="200" data-counter-target="colorCounter">帽子は赤、服は白ベースで差し色に青、肌は柔らかい色味でお願いします。</textarea>
+            <div class="form-text text-white-50">推奨: 120文字以内。色味・質感・光源などを明示すると安定します。</div>
           </div>
-          <div class="mb-3">
-            <label class="form-label" for="pose_instruction">ポーズの指示</label>
-            <textarea class="form-control" id="pose_instruction" name="pose_instruction" rows="2">キャラクターは元気にジャンプしているポーズでお願いします。</textarea>
+
+          <div>
+            <div class="d-flex justify-content-between align-items-center">
+              <label class="form-label" for="pose_instruction">ポーズの指示</label>
+              <small id="poseCounter" class="text-white-50">0/160</small>
+            </div>
+            <textarea class="form-control" id="pose_instruction" name="pose_instruction" rows="2" maxlength="160" data-counter-target="poseCounter">キャラクターは元気にジャンプしているポーズでお願いします。</textarea>
+            <div class="form-text text-white-50">推奨: 動き・視線・カメラ距離を記載。</div>
           </div>
-          <div class="row">
-            <div class="col-md-6 mb-3">
+
+          <div class="row g-3">
+            <div class="col-md-6">
               <label class="form-label" for="aspect_ratio">アスペクト比（任意）</label>
               <select class="form-select" id="aspect_ratio" name="aspect_ratio">
                 {% for label in aspect_ratio_options %}
@@ -28,7 +141,7 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-6 mb-3">
+            <div class="col-md-6">
               <label class="form-label" for="resolution">解像度（任意）</label>
               <select class="form-select" id="resolution" name="resolution">
                 {% for label in resolution_options %}
@@ -37,32 +150,134 @@
               </select>
             </div>
           </div>
-          <button class="btn btn-primary" type="submit">イラスト生成</button>
+
+          <div class="d-grid d-md-flex align-items-center gap-3">
+            <button class="btn btn-primary flex-grow-1" id="generateButton" type="submit">
+              <span class="spinner-border spinner-border-sm me-2 d-none" id="loadingSpinner" aria-hidden="true"></span>
+              <span id="submitLabel">イラスト生成をリクエスト</span>
+            </button>
+            <div class="text-white-50 small"><i class="bi bi-lightbulb me-1"></i> 送信中はボタンが無効化されます。</div>
+          </div>
         </form>
       </div>
     </div>
   </div>
-  <div class="col-lg-6">
-    {% if image_data %}
-    <div class="card shadow-sm mb-3">
-      <div class="card-body text-center">
-        <h3 class="card-title mb-3">生成されたイラスト</h3>
-        <img class="img-fluid rounded" src="{{ image_data }}" alt="生成イラスト">
-        <div class="mt-3">
-          <a class="btn btn-success" href="{{ url_for('download') }}">生成画像をダウンロード</a>
-        </div>
-      </div>
-    </div>
-    {% endif %}
 
-    {% if prompt_text %}
-    <div class="card shadow-sm">
+  <div class="col-lg-6">
+    <div class="card glass-card h-100 mb-3">
       <div class="card-body">
-        <h4 class="card-title">APIに送信したプロンプト</h4>
-        <pre class="bg-light p-3 rounded" style="white-space: pre-wrap;">{{ prompt_text }}</pre>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h3 class="card-title mb-0">生成されたイラスト</h3>
+          <span class="option-chip"><i class="bi bi-download"></i> ステップ 2</span>
+        </div>
+        {% if image_data %}
+        <div class="text-center">
+          <img class="img-fluid rounded mb-3" src="{{ image_data }}" alt="生成イラスト">
+          <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+            <a class="btn btn-success" href="{{ url_for('main.download') }}"><i class="bi bi-cloud-arrow-down me-1"></i> 生成画像をダウンロード</a>
+          </div>
+        </div>
+        {% else %}
+        <p class="subtle-text mb-0">ラフ絵をアップロードして「イラスト生成」を押すと、ここにプレビューが表示されます。</p>
+        {% endif %}
       </div>
     </div>
-    {% endif %}
+
+    <div class="card glass-card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h4 class="card-title mb-0">APIに送信したプロンプト</h4>
+          <span class="badge bg-primary-subtle text-light">読みやすい形で確認</span>
+        </div>
+        {% if prompt_text %}
+        <pre class="bg-dark text-white p-3 rounded" style="white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.08);">{{ prompt_text }}</pre>
+        {% else %}
+        <p class="subtle-text mb-0">入力内容に応じたプロンプトがここに表示されます。生成前のヒントとして「色味・質感・ポーズ」が反映されます。</p>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('generateForm');
+    const submitBtn = document.getElementById('generateButton');
+    const spinner = document.getElementById('loadingSpinner');
+    const submitLabel = document.getElementById('submitLabel');
+    const fileInput = document.getElementById('rough_image');
+    const previewImage = document.getElementById('previewImage');
+    const placeholder = document.getElementById('uploadPlaceholder');
+    const fileMeta = document.getElementById('fileMeta');
+    const dropzone = document.getElementById('uploadDropzone');
+    const clearButton = document.getElementById('clearImage');
+
+    const updateCounter = (textarea) => {
+      const targetId = textarea.dataset.counterTarget;
+      if (!targetId) return;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const max = textarea.getAttribute('maxlength') || textarea.maxLength;
+      target.textContent = `${textarea.value.length}/${max}`;
+    };
+
+    document.querySelectorAll('[data-counter-target]').forEach((el) => {
+      updateCounter(el);
+      el.addEventListener('input', () => updateCounter(el));
+    });
+
+    const resetPreview = () => {
+      previewImage.classList.add('d-none');
+      previewImage.removeAttribute('src');
+      placeholder.classList.remove('d-none');
+      fileMeta.textContent = '';
+      fileInput.value = '';
+    };
+
+    clearButton.addEventListener('click', () => resetPreview());
+
+    const handleFile = (file) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImage.src = e.target.result;
+        previewImage.classList.remove('d-none');
+        placeholder.classList.add('d-none');
+        const sizeKb = (file.size / 1024).toFixed(1);
+        fileMeta.textContent = `${file.name} / ${sizeKb} KB`;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    fileInput.addEventListener('change', (event) => {
+      const [file] = event.target.files;
+      handleFile(file);
+    });
+
+    ['dragenter', 'dragover'].forEach((type) => {
+      dropzone.addEventListener(type, (event) => {
+        event.preventDefault();
+        dropzone.classList.add('hover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((type) => {
+      dropzone.addEventListener(type, (event) => {
+        event.preventDefault();
+        dropzone.classList.remove('hover');
+      });
+    });
+    dropzone.addEventListener('drop', (event) => {
+      const [file] = event.dataTransfer.files;
+      if (!file) return;
+      fileInput.files = event.dataTransfer.files;
+      handleFile(file);
+    });
+
+    form.addEventListener('submit', () => {
+      submitBtn.disabled = true;
+      spinner.classList.remove('d-none');
+      submitLabel.textContent = '送信中...';
+    });
+  });
+</script>
 {% endblock %}
