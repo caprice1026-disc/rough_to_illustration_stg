@@ -41,8 +41,8 @@ class IllustrationPreset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     name = db.Column(db.String(80), nullable=False)
-    color_instruction = db.Column(db.String(200), nullable=False)
-    pose_instruction = db.Column(db.String(160), nullable=False)
+    color_instruction = db.Column(db.String(1000), nullable=False)
+    pose_instruction = db.Column(db.String(1000), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     user = db.relationship("User", back_populates="presets")

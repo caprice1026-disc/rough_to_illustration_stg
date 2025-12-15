@@ -90,7 +90,6 @@
           <div>
             <div class="d-flex justify-content-between align-items-center mb-2">
               <label class="form-label mb-0" for="rough_image">ラフ絵（PNG/JPG/JPEG）</label>
-              <small class="text-white-50">最大3MB推奨</small>
             </div>
             <div id="uploadDropzone" class="upload-dropzone">
               <div id="uploadPlaceholder" class="subtle-text mb-2">画像をドラッグ＆ドロップ、または下のボタンから選択</div>
@@ -107,18 +106,18 @@
           <div>
             <div class="d-flex justify-content-between align-items-center">
               <label class="form-label" for="color_instruction">着色イメージや雰囲気</label>
-              <small id="colorCounter" class="text-white-50">0/200</small>
+              <small id="colorCounter" class="text-white-50">0/1000</small>
             </div>
-            <textarea class="form-control" id="color_instruction" name="color_instruction" rows="3" maxlength="200" data-counter-target="colorCounter">帽子は赤、服は白ベースで差し色に青、肌は柔らかい色味でお願いします。</textarea>
-            <div class="form-text text-white-50">推奨: 120文字以内。色味・質感・光源などを明示すると安定します。</div>
+            <textarea class="form-control" id="color_instruction" name="color_instruction" rows="3" maxlength="1000" data-counter-target="colorCounter">帽子は赤、服は白ベースで差し色に青、肌は柔らかい色味でお願いします。</textarea>
+            <div class="form-text text-white-50">推奨: 1000文字以内。色味・質感・光源などを明示すると安定します。</div>
           </div>
 
           <div>
             <div class="d-flex justify-content-between align-items-center">
               <label class="form-label" for="pose_instruction">ポーズの指示</label>
-              <small id="poseCounter" class="text-white-50">0/160</small>
+              <small id="poseCounter" class="text-white-50">0/1000</small>
             </div>
-            <textarea class="form-control" id="pose_instruction" name="pose_instruction" rows="2" maxlength="160" data-counter-target="poseCounter">キャラクターは元気にジャンプしているポーズでお願いします。</textarea>
+            <textarea class="form-control" id="pose_instruction" name="pose_instruction" rows="2" maxlength="1000" data-counter-target="poseCounter">キャラクターは元気にジャンプしているポーズでお願いします。</textarea>
             <div class="form-text text-white-50">推奨: 動き・視線・カメラ距離を記載。</div>
           </div>
 
