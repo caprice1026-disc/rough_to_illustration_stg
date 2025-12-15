@@ -76,6 +76,11 @@
   padding: 12px;
 }
 
+.preset-actions > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .preset-actions button {
-  min-width: 120px;
+  width: 100%;
 }

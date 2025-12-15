@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Optional
-import os
+from typing import Any, Optional
+
 from google import genai
 from google.genai import types
 from PIL import Image
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 # .env に記載したAPIキーなどの環境変数を読み込む
 load_dotenv()
 
-client = genai.Client()
+client: genai.Client = genai.Client()
 
 
 @dataclass
@@ -68,7 +68,7 @@ def generate_image(
     """
 
     # 公式ドキュメントに合わせて image_config で制御する 
-    image_config_kwargs: dict[str, object] = {}
+    image_config_kwargs: dict[str, Any] = {}
     if aspect_ratio:
         image_config_kwargs["aspect_ratio"] = aspect_ratio
 
@@ -76,7 +76,7 @@ def generate_image(
     if image_size:
         image_config_kwargs["image_size"] = image_size
 
-    config_kwargs: dict[str, object] = {
+    config_kwargs: dict[str, Any] = {
         # テキストによる補足説明も返ってきてほしいので TEXT + IMAGE
         "response_modalities": ["TEXT", "IMAGE"],
     }
@@ -108,7 +108,7 @@ def generate_image(
         raise RuntimeError("APIレスポンスに画像データが含まれていません。")
 
     byte_stream = BytesIO(image_bytes)
-    generated_image = Image.open(byte_stream)
+    generated_image: Image.Image = Image.open(byte_stream)
     generated_image.load()
 
     # ここでファイル保存したければコメントを外す
