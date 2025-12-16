@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
+from illust import MissingApiKeyError
 from extensions import db
 from models import IllustrationPreset
 from services.generation_service import (
@@ -81,8 +82,12 @@ def index():
                 )
         except GenerationError as exc:
             flash(str(exc), "error")
+        except MissingApiKeyError:
+            current_app.logger.error("Missing API key for image generation.")
+            flash("APIキーが設定されていません。", "error")
         except Exception as exc:  # noqa: BLE001
-            flash(f"画像生成に失敗しました: {exc}", "error")
+            current_app.logger.exception("Image generation failed: %s", exc)
+            flash("画像生成に失敗しました。しばらくしてから再試行してください。", "error")
         else:
             save_result_to_session(result)
             image_data = result.image_data_uri

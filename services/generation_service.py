@@ -82,7 +82,8 @@ def decode_uploaded_image(file: Optional[FileStorage], *, label: str = "画像")
         raw_bytes = file.read()
         image = Image.open(BytesIO(raw_bytes)).convert("RGB")
     except Exception as exc:  # noqa: BLE001
-        raise GenerationError(f"画像の読み込みに失敗しました: {exc}") from exc
+        current_app.logger.exception("Failed to decode uploaded image (%s): %s", label, exc)
+        raise GenerationError("画像の読み込みに失敗しました。PNG/JPG/JPEG を確認してください。") from exc
 
     return image
 

@@ -31,7 +31,7 @@
    ```
 2. `.env` に API キーなどを設定
    ```bash
-   GOOGLE_API_KEY="<GeminiのAPIキー>"
+   GEMINI_API_KEY="<GeminiのAPIキー>"     # 互換のため GOOGLE_API_KEY でも可
    SECRET_KEY="任意の秘密鍵"             # 省略時はデフォルト値を使用
    DATABASE_URL="sqlite:///app.db"      # 任意、未指定ならSQLiteファイルを利用
    ```

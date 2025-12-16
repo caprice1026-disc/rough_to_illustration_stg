@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -17,12 +18,18 @@ load_dotenv()
 
 DEFAULT_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")
 
+logger = logging.getLogger(__name__)
+
+
+class MissingApiKeyError(RuntimeError):
+    """APIキーが設定されていない場合の例外。"""
+
 
 @lru_cache(maxsize=1)
 def _client() -> genai.Client:
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY が設定されていません。.env を設定してください。")
+        raise MissingApiKeyError("APIキーが設定されていません。")
     return genai.Client(api_key=api_key)
 
 
@@ -105,7 +112,7 @@ def generate_image(
     for part in response.parts:
         # モデルが説明テキストを返すことがあるのでログに出す
         if getattr(part, "text", None):
-            print(part.text)
+            logger.debug("Gemini response text: %s", part.text)
 
         inline_data = getattr(part, "inline_data", None)
         if inline_data and getattr(inline_data, "data", None):
@@ -167,7 +174,7 @@ def generate_image_with_contents(
 
     for part in response.parts:
         if getattr(part, "text", None):
-            print(part.text)
+            logger.debug("Gemini response text: %s", part.text)
 
         inline_data = getattr(part, "inline_data", None)
         if inline_data and getattr(inline_data, "data", None):
