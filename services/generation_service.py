@@ -11,8 +11,8 @@ from flask import current_app, session
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 
-from illust import generate_image
-from services.prompt_builder import build_prompt
+from illust import generate_image, generate_image_with_contents
+from services.prompt_builder import build_prompt, build_reference_style_colorize_prompt
 
 
 def extension_for_mime_type(mime_type: str) -> str:
@@ -72,11 +72,11 @@ def normalize_optional(label: Optional[str]) -> Optional[str]:
     return label
 
 
-def decode_uploaded_image(file: Optional[FileStorage]) -> Image.Image:
-    """アップロードされた画像ファイルをPIL Imageとして読み込む。"""
+def decode_uploaded_image(file: Optional[FileStorage], *, label: str = "画像") -> Image.Image:
+    """アップロードされた画像ファイルを PIL Image として読み込む。"""
 
     if file is None or file.filename == "":
-        raise GenerationError("ラフ絵ファイルを選択してください。")
+        raise GenerationError(f"{label}を選択してください。")
 
     try:
         raw_bytes = file.read()
@@ -97,7 +97,7 @@ def run_generation(
 ) -> GenerationResult:
     """入力からプロンプトを作成し、画像生成APIを呼び出して結果を返す。"""
 
-    image = decode_uploaded_image(file)
+    image = decode_uploaded_image(file, label="ラフ絵")
     aspect_ratio = normalize_optional(aspect_ratio_label)
     resolution = normalize_optional(resolution_label)
     prompt = build_prompt(color_instruction, pose_instruction)
@@ -105,6 +105,47 @@ def run_generation(
     generated = generate_image(
         prompt=prompt,
         image=image,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+    )
+
+    image_id = _persist_generated_image(
+        raw_bytes=generated.raw_bytes,
+        mime_type=generated.mime_type,
+    )
+    encoded = base64.b64encode(generated.raw_bytes).decode("utf-8")
+    return GenerationResult(
+        image_data_uri=f"data:{generated.mime_type};base64,{encoded}",
+        mime_type=generated.mime_type,
+        image_id=image_id,
+    )
+
+
+def run_generation_with_reference(
+    *,
+    reference_file: Optional[FileStorage],
+    rough_file: Optional[FileStorage],
+    aspect_ratio_label: Optional[str],
+    resolution_label: Optional[str],
+) -> GenerationResult:
+    """完成絵(参照)＋ラフ(対象)の2枚入力で画像生成APIを呼び出して結果を返す。"""
+
+    reference_image = decode_uploaded_image(reference_file, label="参考（完成）画像")
+    rough_image = decode_uploaded_image(rough_file, label="ラフスケッチ")
+    aspect_ratio = normalize_optional(aspect_ratio_label)
+    resolution = normalize_optional(resolution_label)
+    prompt = build_reference_style_colorize_prompt()
+
+    contents = [
+        "これから2枚の画像を渡します。1枚目は編集対象のラフスケッチです。",
+        rough_image,
+        "次に2枚目を渡します。2枚目は画風・質感・陰影・彩度レンジの参照となる完成済みイラストです。",
+        reference_image,
+        prompt,
+    ]
+    generated = generate_image_with_contents(
+        contents=contents,
+        prompt_for_record=prompt,
         aspect_ratio=aspect_ratio,
         resolution=resolution,
     )

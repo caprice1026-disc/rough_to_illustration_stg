@@ -9,12 +9,12 @@
       <span class="badge badge-soft">文字数カウンタ</span>
       <span class="badge badge-soft">ローディング表示</span>
     </div>
-    <h1 class="hero-title mb-2">ラフ絵をアップロードして、ワンクリックで彩色・仕上げ</h1>
-    <p class="subtle-text mb-3">色とポーズの指示を添えて、Gemini に高品質なイラスト化を依頼します。プレビューで確認しながら安心して送信できます。</p>
+    <h1 class="hero-title mb-2">モードを切り替えて、ラフを高品質イラストへ</h1>
+    <p class="subtle-text mb-3">ラフ1枚＋指示、または完成絵参照＋ラフ（2枚）で、Gemini に仕上げを依頼します。プレビューで確認しながら安心して送信できます。</p>
     <div class="d-flex flex-wrap gap-2">
       <div class="pill"><i class="bi bi-magic"></i> ブラシアップと欠損補完</div>
       <div class="pill"><i class="bi bi-cloud-upload"></i> 画像はサーバー側に一時保存</div>
-      <div class="pill"><i class="bi bi-lightning-charge"></i> プロンプト自動組み立て</div>
+      <div class="pill"><i class="bi bi-lightning-charge"></i> モード別プロンプト</div>
     </div>
   </div>
 </div>
@@ -28,9 +28,38 @@
           <span class="option-chip"><i class="bi bi-check2-circle"></i> ステップ 1</span>
         </div>
 
+        <div class="mode-switch mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <h5 class="mb-0">モード</h5>
+              <small class="text-white-50" id="modeDescription">
+                {% for mode in modes %}
+                {% if mode.id == current_mode %}
+                {{ mode.description }}
+                {% endif %}
+                {% endfor %}
+              </small>
+            </div>
+          </div>
+          <div class="nav nav-pills mode-pills" id="modePills" role="tablist" aria-label="生成モード">
+            {% for mode in modes %}
+            <button
+              type="button"
+              class="nav-link {% if mode.id == current_mode %}active{% endif %} {% if not mode.enabled %}disabled{% endif %}"
+              data-mode="{{ mode.id }}"
+              data-mode-description="{{ mode.description }}"
+              {% if not mode.enabled %}disabled aria-disabled="true"{% endif %}
+            >
+              {{ mode.label }}
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+
         <div
-          class="preset-panel mb-3"
+          class="preset-panel mb-3 {% if current_mode != 'rough_with_instructions' %}d-none{% endif %}"
           id="presetPanel"
+          data-mode-visible="rough_with_instructions"
           data-presets='{{ presets_payload | tojson }}'
         >
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -54,11 +83,13 @@
               <button class="btn btn-outline-light flex-grow-1" type="button" id="applyPreset"><i class="bi bi-arrow-down-circle me-1"></i> 読込</button>
               <form method="post" action="{{ url_for('main.delete_preset') }}" class="flex-grow-1" id="deletePresetForm">
                 <input type="hidden" name="preset_id" id="deletePresetId">
+                <input type="hidden" name="mode" value="{{ current_mode }}">
                 <button class="btn btn-outline-danger w-100" type="submit"><i class="bi bi-trash3 me-1"></i> 削除</button>
               </form>
             </div>
           </div>
           <form class="row gy-2 gx-3 align-items-end" method="post" action="{{ url_for('main.create_preset') }}" id="presetCreateForm">
+            <input type="hidden" name="mode" value="{{ current_mode }}">
             <div class="col-md-4">
               <label class="form-label" for="preset_name">プリセット名</label>
               <input class="form-control" type="text" id="preset_name" name="preset_name" maxlength="80" placeholder="例: 夕焼け元気">
@@ -73,23 +104,50 @@
         </div>
 
         <form id="generateForm" method="post" enctype="multipart/form-data" class="d-flex flex-column gap-3">
-          <div>
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <label class="form-label mb-0" for="rough_image">ラフ絵（PNG/JPG/JPEG）</label>
-            </div>
-            <div id="uploadDropzone" class="upload-dropzone">
-              <div id="uploadPlaceholder" class="subtle-text mb-2">画像をドラッグ＆ドロップ、または下のボタンから選択</div>
-              <img id="previewImage" class="preview-image d-none mb-2" alt="プレビュー画像">
-              <div id="fileMeta" class="small text-white-50 mb-2"></div>
-              <div class="d-flex justify-content-center gap-2">
-                <label class="btn btn-outline-light btn-sm" for="rough_image"><i class="bi bi-folder2-open me-1"></i> ファイルを選択</label>
-                <button class="btn btn-outline-light btn-sm" type="button" id="clearImage" aria-label="画像をクリア"><i class="bi bi-x-lg"></i></button>
+          <input type="hidden" name="mode" id="generationModeInput" value="{{ current_mode }}">
+
+          <div class="d-flex flex-column flex-md-row gap-3">
+            <div
+              class="flex-fill {% if current_mode != 'reference_style_colorize' %}d-none{% endif %}"
+              data-mode-visible="reference_style_colorize"
+            >
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0" for="reference_image">参考（完成）画像（PNG/JPG/JPEG）</label>
               </div>
+              <div id="referenceDropzone" class="upload-dropzone">
+                <div id="referencePlaceholder" class="subtle-text mb-2">参考画像をドラッグ＆ドロップ、または下のボタンから選択</div>
+                <img id="referencePreviewImage" class="preview-image d-none mb-2" alt="参考画像プレビュー">
+                <div id="referenceFileMeta" class="small text-white-50 mb-2"></div>
+                <div class="d-flex justify-content-center gap-2">
+                  <label class="btn btn-outline-light btn-sm" for="reference_image"><i class="bi bi-folder2-open me-1"></i> ファイルを選択</label>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="referenceClearImage" aria-label="参考画像をクリア"><i class="bi bi-x-lg"></i></button>
+                </div>
+              </div>
+              <input class="visually-hidden" type="file" id="reference_image" name="reference_image" accept="image/png, image/jpeg">
             </div>
-            <input class="visually-hidden" type="file" id="rough_image" name="rough_image" accept="image/png, image/jpeg">
+
+            <div class="flex-fill">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0" for="rough_image">ラフスケッチ（PNG/JPG/JPEG）</label>
+              </div>
+              <div id="roughDropzone" class="upload-dropzone">
+                <div id="roughPlaceholder" class="subtle-text mb-2">画像をドラッグ＆ドロップ、または下のボタンから選択</div>
+                <img id="roughPreviewImage" class="preview-image d-none mb-2" alt="ラフ画像プレビュー">
+                <div id="roughFileMeta" class="small text-white-50 mb-2"></div>
+                <div class="d-flex justify-content-center gap-2">
+                  <label class="btn btn-outline-light btn-sm" for="rough_image"><i class="bi bi-folder2-open me-1"></i> ファイルを選択</label>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="roughClearImage" aria-label="ラフ画像をクリア"><i class="bi bi-x-lg"></i></button>
+                </div>
+              </div>
+              <input class="visually-hidden" type="file" id="rough_image" name="rough_image" accept="image/png, image/jpeg">
+            </div>
           </div>
 
-          <div>
+          <div class="{% if current_mode != 'reference_style_colorize' %}d-none{% endif %} small text-white-50" data-mode-visible="reference_style_colorize">
+            <i class="bi bi-info-circle me-1"></i> このモードのプロンプトは暫定的に固定です（完成絵の絵柄を参考にラフを仕上げます）。
+          </div>
+
+          <div class="{% if current_mode != 'rough_with_instructions' %}d-none{% endif %}" data-mode-visible="rough_with_instructions">
             <div class="d-flex justify-content-between align-items-center">
               <label class="form-label" for="color_instruction">着色イメージや雰囲気</label>
               <small id="colorCounter" class="text-white-50">0/1000</small>
@@ -98,7 +156,7 @@
             <div class="form-text text-white-50">推奨: 1000文字以内。色味・質感・光源などを明示すると安定します。</div>
           </div>
 
-          <div>
+          <div class="{% if current_mode != 'rough_with_instructions' %}d-none{% endif %}" data-mode-visible="rough_with_instructions">
             <div class="d-flex justify-content-between align-items-center">
               <label class="form-label" for="pose_instruction">ポーズの指示</label>
               <small id="poseCounter" class="text-white-50">0/1000</small>
@@ -129,7 +187,13 @@
           <div class="d-grid d-md-flex align-items-center gap-3">
             <button class="btn btn-primary flex-grow-1" id="generateButton" type="submit">
               <span class="spinner-border spinner-border-sm me-2 d-none" id="loadingSpinner" aria-hidden="true"></span>
-              <span id="submitLabel">イラスト生成をリクエスト</span>
+              <span id="submitLabel">
+                {% if current_mode == 'reference_style_colorize' %}
+                参照して着色をリクエスト
+                {% else %}
+                イラスト生成をリクエスト
+                {% endif %}
+              </span>
             </button>
             <div class="text-white-50 small"><i class="bi bi-lightbulb me-1"></i> 送信中はボタンが無効化されます。</div>
           </div>
@@ -159,7 +223,12 @@
           </div>
         </div>
         {% else %}
-        <p class="subtle-text mb-0">ラフ絵をアップロードして「イラスト生成」を押すと、ここにプレビューが表示されます。</p>
+        <p class="subtle-text mb-0 {% if current_mode != 'rough_with_instructions' %}d-none{% endif %}" data-mode-visible="rough_with_instructions">
+          ラフスケッチをアップロードして「イラスト生成」を押すと、ここにプレビューが表示されます。
+        </p>
+        <p class="subtle-text mb-0 {% if current_mode != 'reference_style_colorize' %}d-none{% endif %}" data-mode-visible="reference_style_colorize">
+          参考（完成）画像とラフスケッチをアップロードして「参照して着色」を押すと、ここにプレビューが表示されます。
+        </p>
         {% endif %}
       </div>
     </div>

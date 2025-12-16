@@ -14,8 +14,10 @@ from services.generation_service import (
     load_mime_type_from_session,
     load_result_from_session,
     run_generation,
+    run_generation_with_reference,
     save_result_to_session,
 )
+from services.modes import ALL_MODES, MODE_REFERENCE_STYLE_COLORIZE, normalize_mode_id
 
 
 main_bp = Blueprint("main", __name__)
@@ -50,22 +52,33 @@ def _fetch_presets() -> list[IllustrationPreset]:
 @login_required
 def index():
     image_data: Optional[str] = None
+    current_mode = normalize_mode_id(request.form.get("mode") or request.args.get("mode"))
 
     if request.method == "POST":
-        file = request.files.get("rough_image")
-        color_instruction = request.form.get("color_instruction", "")
-        pose_instruction = request.form.get("pose_instruction", "")
         aspect_ratio_label = request.form.get("aspect_ratio") or "auto"
         resolution_label = request.form.get("resolution") or "auto"
 
         try:
-            result = run_generation(
-                file=file,
-                color_instruction=color_instruction,
-                pose_instruction=pose_instruction,
-                aspect_ratio_label=aspect_ratio_label,
-                resolution_label=resolution_label,
-            )
+            if current_mode == MODE_REFERENCE_STYLE_COLORIZE.id:
+                reference_file = request.files.get("reference_image")
+                rough_file = request.files.get("rough_image")
+                result = run_generation_with_reference(
+                    reference_file=reference_file,
+                    rough_file=rough_file,
+                    aspect_ratio_label=aspect_ratio_label,
+                    resolution_label=resolution_label,
+                )
+            else:
+                file = request.files.get("rough_image")
+                color_instruction = request.form.get("color_instruction", "")
+                pose_instruction = request.form.get("pose_instruction", "")
+                result = run_generation(
+                    file=file,
+                    color_instruction=color_instruction,
+                    pose_instruction=pose_instruction,
+                    aspect_ratio_label=aspect_ratio_label,
+                    resolution_label=resolution_label,
+                )
         except GenerationError as exc:
             flash(str(exc), "error")
         except Exception as exc:  # noqa: BLE001
@@ -92,6 +105,8 @@ def index():
     return render_template(
         "index.html",
         image_data=image_data,
+        modes=ALL_MODES,
+        current_mode=current_mode,
         aspect_ratio_options=ASPECT_RATIO_OPTIONS,
         resolution_options=RESOLUTION_OPTIONS,
         user_presets=user_presets,
@@ -120,25 +135,26 @@ def download():
 def create_preset():
     """色とポーズの指示をプリセットとして保存する。"""
 
+    mode = normalize_mode_id(request.form.get("mode"))
     name = (request.form.get("preset_name") or "").strip()
     color_instruction = (request.form.get("preset_color") or "").strip()
     pose_instruction = (request.form.get("preset_pose") or "").strip()
 
     if not name:
         flash("プリセット名を入力してください。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     if len(name) > 80:
         flash("プリセット名は80文字以内にしてください。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     if not color_instruction or not pose_instruction:
         flash("色とポーズの指示を両方入力してください。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     if len(color_instruction) > 200 or len(pose_instruction) > 160:
         flash("文字数上限を超えています。入力内容を短くしてください。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     preset = IllustrationPreset(
         user_id=current_user.id,
@@ -149,7 +165,7 @@ def create_preset():
     db.session.add(preset)
     db.session.commit()
     flash("プリセットを保存しました。", "success")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.index", mode=mode))
 
 
 @main_bp.route("/presets/delete", methods=["POST"])
@@ -157,19 +173,20 @@ def create_preset():
 def delete_preset():
     """選択されたプリセットを削除する。"""
 
+    mode = normalize_mode_id(request.form.get("mode"))
     preset_id = request.form.get("preset_id", type=int)
     if not preset_id:
         flash("削除するプリセットを選択してください。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     preset = IllustrationPreset.query.filter_by(
         id=preset_id, user_id=current_user.id
     ).first()
     if not preset:
         flash("指定されたプリセットが見つかりません。", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.index", mode=mode))
 
     db.session.delete(preset)
     db.session.commit()
     flash("プリセットを削除しました。", "info")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.index", mode=mode))

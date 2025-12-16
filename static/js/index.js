@@ -14,15 +14,15 @@ const initCounters = () => {
   });
 };
 
-const initImagePreview = () => {
-  const fileInput = document.getElementById('rough_image');
-  const previewImage = document.getElementById('previewImage');
-  const placeholder = document.getElementById('uploadPlaceholder');
-  const fileMeta = document.getElementById('fileMeta');
-  const dropzone = document.getElementById('uploadDropzone');
-  const clearButton = document.getElementById('clearImage');
+const bindImageUploader = (config) => {
+  const fileInput = document.getElementById(config.inputId);
+  const previewImage = document.getElementById(config.previewId);
+  const placeholder = document.getElementById(config.placeholderId);
+  const fileMeta = document.getElementById(config.metaId);
+  const dropzone = document.getElementById(config.dropzoneId);
+  const clearButton = document.getElementById(config.clearButtonId);
 
-  if (!fileInput || !previewImage || !placeholder || !fileMeta || !dropzone || !clearButton) return;
+  if (!fileInput || !previewImage || !placeholder || !fileMeta || !dropzone || !clearButton) return null;
 
   const resetPreview = () => {
     previewImage.classList.add('d-none');
@@ -35,8 +35,8 @@ const initImagePreview = () => {
   const handleFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
-      previewImage.src = e.target.result;
+    reader.onload = (event) => {
+      previewImage.src = event.target.result;
       previewImage.classList.remove('d-none');
       placeholder.classList.add('d-none');
       const sizeKb = (file.size / 1024).toFixed(1);
@@ -45,7 +45,7 @@ const initImagePreview = () => {
     reader.readAsDataURL(file);
   };
 
-  clearButton.addEventListener('click', () => resetPreview());
+  clearButton.addEventListener('click', resetPreview);
 
   fileInput.addEventListener('change', (event) => {
     const [file] = event.target.files;
@@ -72,6 +72,107 @@ const initImagePreview = () => {
     fileInput.files = event.dataTransfer.files;
     handleFile(file);
   });
+
+  return { resetPreview };
+};
+
+const initImagePreviews = () => {
+  const uploaders = {
+    rough: bindImageUploader({
+      inputId: 'rough_image',
+      previewId: 'roughPreviewImage',
+      placeholderId: 'roughPlaceholder',
+      metaId: 'roughFileMeta',
+      dropzoneId: 'roughDropzone',
+      clearButtonId: 'roughClearImage',
+    }),
+    reference: bindImageUploader({
+      inputId: 'reference_image',
+      previewId: 'referencePreviewImage',
+      placeholderId: 'referencePlaceholder',
+      metaId: 'referenceFileMeta',
+      dropzoneId: 'referenceDropzone',
+      clearButtonId: 'referenceClearImage',
+    }),
+  };
+
+  return uploaders;
+};
+
+const MODE_SUBMIT_LABELS = {
+  rough_with_instructions: 'イラスト生成をリクエスト',
+  reference_style_colorize: '参照して着色をリクエスト',
+  chat_edit: 'チャット編集（準備中）',
+};
+
+const initModeSwitch = (uploaders) => {
+  const modePills = document.getElementById('modePills');
+  const modeInput = document.getElementById('generationModeInput');
+  const modeDescription = document.getElementById('modeDescription');
+  const submitLabel = document.getElementById('submitLabel');
+
+  if (!modePills || !modeInput) return;
+
+  const splitModes = (raw) =>
+    String(raw || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+  const setModeInUrl = (modeId) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('mode', modeId);
+      window.history.replaceState({}, '', url);
+    } catch (error) {
+      console.warn('Failed to update mode in URL', error);
+    }
+  };
+
+  const toggleVisibility = (modeId) => {
+    document.querySelectorAll('[data-mode-visible]').forEach((el) => {
+      const modes = splitModes(el.dataset.modeVisible);
+      const shouldShow = modes.includes(modeId);
+      el.classList.toggle('d-none', !shouldShow);
+    });
+  };
+
+  const applyMode = (modeId, { updateUrl = true } = {}) => {
+    modeInput.value = modeId;
+    document.querySelectorAll('input[name="mode"]').forEach((input) => {
+      input.value = modeId;
+    });
+
+    const buttons = modePills.querySelectorAll('button[data-mode]');
+    buttons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === modeId);
+    });
+
+    toggleVisibility(modeId);
+
+    if (submitLabel && MODE_SUBMIT_LABELS[modeId]) {
+      submitLabel.textContent = MODE_SUBMIT_LABELS[modeId];
+    }
+
+    const activeButton = modePills.querySelector(`button[data-mode="${modeId}"]`);
+    const description = activeButton ? activeButton.dataset.modeDescription : '';
+    if (modeDescription) modeDescription.textContent = description || '';
+
+    if (uploaders && uploaders.reference && modeId !== 'reference_style_colorize') {
+      uploaders.reference.resetPreview();
+    }
+
+    if (updateUrl) setModeInUrl(modeId);
+  };
+
+  modePills.querySelectorAll('button[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      applyMode(btn.dataset.mode);
+    });
+  });
+
+  applyMode(modeInput.value, { updateUrl: false });
 };
 
 const initSubmitState = () => {
@@ -145,7 +246,8 @@ const initPresets = () => {
 
 const bootstrapIndexPage = () => {
   initCounters();
-  initImagePreview();
+  const uploaders = initImagePreviews();
+  initModeSwitch(uploaders);
   initSubmitState();
   initPresets();
 };

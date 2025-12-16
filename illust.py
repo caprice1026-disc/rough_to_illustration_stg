@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from functools import lru_cache
 from io import BytesIO
 from typing import Any, Optional
 
@@ -13,7 +15,15 @@ from dotenv import load_dotenv
 # .env に記載したAPIキーなどの環境変数を読み込む
 load_dotenv()
 
-client: genai.Client = genai.Client()
+DEFAULT_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")
+
+
+@lru_cache(maxsize=1)
+def _client() -> genai.Client:
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY が設定されていません。.env を設定してください。")
+    return genai.Client(api_key=api_key)
 
 
 @dataclass
@@ -83,8 +93,8 @@ def generate_image(
     if image_config_kwargs:
         config_kwargs["image_config"] = types.ImageConfig(**image_config_kwargs)
 
-    response = client.models.generate_content(
-        model="gemini-3-pro-image-preview",
+    response = _client().models.generate_content(
+        model=DEFAULT_IMAGE_MODEL,
         contents=[prompt, image],
         config=types.GenerateContentConfig(**config_kwargs),
     )
@@ -119,4 +129,89 @@ def generate_image(
         raw_bytes=image_bytes,
         mime_type=mime_type,
         prompt=prompt,
+    )
+
+
+def generate_image_with_contents(
+    *,
+    contents: list[object],
+    prompt_for_record: str,
+    aspect_ratio: Optional[str] = None,
+    resolution: Optional[str] = None,
+) -> GeneratedImage:
+    if not contents:
+        raise ValueError("contents must not be empty")
+
+    image_config_kwargs: dict[str, Any] = {}
+    if aspect_ratio:
+        image_config_kwargs["aspect_ratio"] = aspect_ratio
+
+    image_size = _map_resolution_to_image_size(resolution)
+    if image_size:
+        image_config_kwargs["image_size"] = image_size
+
+    config_kwargs: dict[str, Any] = {
+        "response_modalities": ["TEXT", "IMAGE"],
+    }
+    if image_config_kwargs:
+        config_kwargs["image_config"] = types.ImageConfig(**image_config_kwargs)
+
+    response = _client().models.generate_content(
+        model=DEFAULT_IMAGE_MODEL,
+        contents=contents,
+        config=types.GenerateContentConfig(**config_kwargs),
+    )
+
+    image_bytes: Optional[bytes] = None
+    mime_type: str = "image/png"
+
+    for part in response.parts:
+        if getattr(part, "text", None):
+            print(part.text)
+
+        inline_data = getattr(part, "inline_data", None)
+        if inline_data and getattr(inline_data, "data", None):
+            image_bytes = inline_data.data
+            mime_type = getattr(inline_data, "mime_type", mime_type) or mime_type
+            break
+
+    if image_bytes is None:
+        raise RuntimeError("APIレスポンスに画像データが含まれていません。")
+
+    byte_stream = BytesIO(image_bytes)
+    generated_image: Image.Image = Image.open(byte_stream)
+    generated_image.load()
+
+    return GeneratedImage(
+        image=generated_image,
+        raw_bytes=image_bytes,
+        mime_type=mime_type,
+        prompt=prompt_for_record,
+    )
+
+
+def generate_image_with_images(
+    prompt: str,
+    images: list[Image.Image],
+    aspect_ratio: Optional[str] = None,
+    resolution: Optional[str] = None,
+) -> GeneratedImage:
+    """
+    プロンプトと複数画像を使って Gemini 3 Pro Image Preview を叩く関数。
+
+    Args:
+        prompt: 指示文。
+        images: 入力画像（1枚以上）。順序もモデルの解釈に影響するため、意図した順に渡す。
+        aspect_ratio: "1:1" / "4:5" / "16:9" など。None の場合はモデル任せ。
+        resolution: "1K" / "2K" / "4K" または UI ラベル ("720p" / "1080p" / "2K")。
+    """
+
+    if not images:
+        raise ValueError("images must not be empty")
+
+    return generate_image_with_contents(
+        contents=[prompt, *images],
+        prompt_for_record=prompt,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
     )
