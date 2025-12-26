@@ -85,8 +85,20 @@ const bindImageUploader = (config) => {
 const initImagePreviews = () => {
   const editMaskData = document.getElementById('editMaskData');
   const editBaseData = document.getElementById('editBaseData');
+  const maskPreview = document.getElementById('editMaskPreviewImage');
+  const maskPlaceholder = document.getElementById('editMaskPlaceholder');
+  const maskFileMeta = document.getElementById('editMaskFileMeta');
+  const resetEditMaskPreview = () => {
+    if (maskPreview) {
+      maskPreview.classList.add('d-none');
+      maskPreview.removeAttribute('src');
+    }
+    if (maskPlaceholder) maskPlaceholder.classList.remove('d-none');
+    if (maskFileMeta) maskFileMeta.textContent = '';
+  };
   const clearEditMaskData = () => {
     if (editMaskData) editMaskData.value = '';
+    resetEditMaskPreview();
   };
   const clearEditBaseData = () => {
     if (editBaseData) editBaseData.value = '';
@@ -125,25 +137,9 @@ const initImagePreviews = () => {
         clearEditBaseData();
       },
     }),
-    editMask: bindImageUploader({
-      inputId: 'edit_mask_image',
-      previewId: 'editMaskPreviewImage',
-      placeholderId: 'editMaskPlaceholder',
-      metaId: 'editMaskFileMeta',
-      dropzoneId: 'editMaskDropzone',
-      clearButtonId: 'editMaskClearImage',
-      onFile: () => {
-        clearEditMaskData();
-        clearEditBaseData();
-      },
-      onClear: () => {
-        clearEditMaskData();
-        clearEditBaseData();
-      },
-    }),
   };
 
-  return uploaders;
+  return { ...uploaders, resetEditMaskPreview };
 };
 
 const MODE_SUBMIT_LABELS = {
@@ -212,15 +208,13 @@ const initModeSwitch = (uploaders) => {
     if (uploaders && uploaders.editBase && modeId !== 'inpaint_outpaint') {
       uploaders.editBase.resetPreview();
     }
-    if (uploaders && uploaders.editMask && modeId !== 'inpaint_outpaint') {
-      uploaders.editMask.resetPreview();
-    }
 
     if (modeId !== 'inpaint_outpaint') {
       const editMaskData = document.getElementById('editMaskData');
       const editBaseData = document.getElementById('editBaseData');
       if (editMaskData) editMaskData.value = '';
       if (editBaseData) editBaseData.value = '';
+      if (uploaders && uploaders.resetEditMaskPreview) uploaders.resetEditMaskPreview();
     }
 
     if (updateUrl) setModeInUrl(modeId);

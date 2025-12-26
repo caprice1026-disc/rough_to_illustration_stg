@@ -147,7 +147,7 @@
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
                 <h5 class="mb-1">編集用画像</h5>
-                <small class="text-white-50">マスクを描くか、透明PNGのマスク済み画像をアップロードできます。</small>
+                <small class="text-white-50">マスクはエディタで描画して適用します。</small>
               </div>
               <button class="btn btn-outline-light btn-sm" type="button" id="openMaskEditorButton"><i class="bi bi-brush me-1"></i> エディタを開く</button>
             </div>
@@ -166,17 +166,12 @@
                 <input class="visually-hidden" type="file" id="edit_base_image" name="edit_base_image" accept="image/png, image/jpeg">
               </div>
               <div class="col-md-6">
-                <label class="form-label mb-0" for="edit_mask_image">マスク画像（任意）</label>
+                <label class="form-label mb-0">マスクプレビュー</label>
                 <div id="editMaskDropzone" class="upload-dropzone mt-2">
-                  <div id="editMaskPlaceholder" class="subtle-text mb-2">マスク画像をアップロード、またはエディタで描画</div>
+                  <div id="editMaskPlaceholder" class="subtle-text mb-2">エディタで作成したマスクがここに表示されます</div>
                   <img id="editMaskPreviewImage" class="preview-image d-none mb-2" alt="マスク画像プレビュー">
                   <div id="editMaskFileMeta" class="small text-white-50 mb-2"></div>
-                  <div class="d-flex justify-content-center gap-2">
-                    <label class="btn btn-outline-light btn-sm" for="edit_mask_image"><i class="bi bi-folder2-open me-1"></i> ファイルを選択</label>
-                    <button class="btn btn-outline-light btn-sm" type="button" id="editMaskClearImage" aria-label="マスク画像をクリア"><i class="bi bi-x-lg"></i></button>
-                  </div>
                 </div>
-                <input class="visually-hidden" type="file" id="edit_mask_image" name="edit_mask_image" accept="image/png, image/jpeg">
               </div>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-3">

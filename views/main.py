@@ -72,14 +72,12 @@ def index():
                 )
             elif current_mode == MODE_INPAINT_OUTPAINT.id:
                 base_file = request.files.get("edit_base_image")
-                mask_file = request.files.get("edit_mask_image")
                 base_data = request.form.get("edit_base_data", "")
                 mask_data = request.form.get("edit_mask_data", "")
                 edit_mode = request.form.get("edit_mode", "inpaint")
                 edit_instruction = request.form.get("edit_instruction", "")
                 result = run_edit_generation(
                     base_file=base_file,
-                    mask_file=mask_file,
                     base_data=base_data,
                     mask_data=mask_data,
                     edit_mode=edit_mode,

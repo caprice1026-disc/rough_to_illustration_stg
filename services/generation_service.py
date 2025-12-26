@@ -248,14 +248,6 @@ def decode_data_url_image(data_url: str, *, label: str = "画像") -> Image.Imag
     return image
 
 
-def extract_mask_from_alpha(image: Image.Image) -> Optional[Image.Image]:
-    """アルファチャンネルがあればマスクとして抽出する。"""
-
-    if "A" not in image.getbands():
-        return None
-    return image.getchannel("A")
-
-
 def normalize_mask_image(mask_image: Image.Image) -> Image.Image:
     """マスク画像をグレースケールに正規化する。"""
 
@@ -277,7 +269,6 @@ def ensure_rgb(image: Image.Image) -> Image.Image:
 def run_edit_generation(
     *,
     base_file: Optional[FileStorage],
-    mask_file: Optional[FileStorage],
     base_data: Optional[str],
     mask_data: Optional[str],
     edit_mode: str,
@@ -290,16 +281,9 @@ def run_edit_generation(
     else:
         base_image = decode_uploaded_image_raw(base_file, label="編集元画像")
 
-    mask_image: Optional[Image.Image] = None
-    if mask_data:
-        mask_image = decode_data_url_image(mask_data, label="マスク画像")
-    elif mask_file and mask_file.filename:
-        mask_image = decode_uploaded_image_raw(mask_file, label="マスク画像")
-    else:
-        mask_image = extract_mask_from_alpha(base_image)
-
-    if mask_image is None:
-        raise GenerationError("マスク画像を用意してください。エディタで描画するか、マスク画像をアップロードしてください。")
+    if not mask_data:
+        raise GenerationError("マスク画像を用意してください。エディタで描画して適用してください。")
+    mask_image = decode_data_url_image(mask_data, label="マスク画像")
 
     base_image = ensure_rgb(base_image)
     mask_image = normalize_mask_image(mask_image)
