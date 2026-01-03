@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card glass-card shadow-lg">
+      <div class="card-body p-4 p-lg-5">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="badge badge-soft mb-2">無料で登録</div>
+            <h2 class="card-title mb-1">新しいクリエイティブをはじめよう</h2>
+            <p class="subtle-text mb-0">ユーザー名・メール・パスワードを設定してアカウントを作成します。</p>
+            <p class="subtle-text mb-0">イニシャルユーザーとしてログイン中のみ登録できます。</p>
+          </div>
+          <i class="bi bi-stars fs-2 text-warning"></i>
+        </div>
+        <form method="post" class="d-flex flex-column gap-3">
+          <div>
+            <label class="form-label" for="username">ユーザー名</label>
+            <div class="input-group">
+              <span class="input-group-text bg-transparent text-white-50"><i class="bi bi-person-check"></i></span>
+              <input class="form-control" id="username" name="username" required placeholder="creative_user">
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="email">メールアドレス</label>
+            <div class="input-group">
+              <span class="input-group-text bg-transparent text-white-50"><i class="bi bi-envelope"></i></span>
+              <input class="form-control" id="email" type="email" name="email" required placeholder="you@example.com">
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="password">パスワード</label>
+            <div class="input-group">
+              <span class="input-group-text bg-transparent text-white-50"><i class="bi bi-shield-lock"></i></span>
+              <input class="form-control" id="password" type="password" name="password" required placeholder="8文字以上を推奨">
+            </div>
+            <div class="form-text text-white-50">同じユーザー名またはメールアドレスの重複登録はできません。</div>
+          </div>
+          <div class="d-grid gap-2 d-md-flex justify-content-md-between align-items-center">
+            <button class="btn btn-primary px-4" type="submit">登録してはじめる</button>
+            <a class="text-decoration-none subtle-text" href="{{ url_for('auth.login') }}">すでにアカウントをお持ちですか？</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
