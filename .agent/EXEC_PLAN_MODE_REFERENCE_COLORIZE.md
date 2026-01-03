@@ -64,7 +64,7 @@
 
 ## Concrete Steps
 
-作業ディレクトリは `c:\\Users\\Hodaka\\Downloads\\div\\rough_to_illustration` を前提とする。
+作業ディレクトリはリポジトリ直下とする。
 
 1. モード定義を追加する。
    - 新規に `services/modes.py` を作り、`GenerationMode`（`id`, `label`, `description`, `enabled`）と `ALL_MODES`, `DEFAULT_MODE_ID`, `normalize_mode_id()` を定義する。

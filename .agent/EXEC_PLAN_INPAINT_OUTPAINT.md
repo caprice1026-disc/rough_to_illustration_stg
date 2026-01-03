@@ -53,7 +53,7 @@
 
 ## Concrete Steps
 
-作業ディレクトリはリポジトリ直下（`C:\Users\Hodaka\Downloads\div\rough_to_illustration`）とする。編集APIの動作を確認するため、最初に `illust.py` と `services/generation_service.py` を更新し、Flask経由で実行できる状態を作る。次に `services/modes.py`、`templates/index.html`、`static/js/index.js`、`static/css/index.css` を順に編集し、最後にREADMEを更新する。
+作業ディレクトリはリポジトリ直下とする。編集APIの動作を確認するため、最初に `illust.py` と `services/generation_service.py` を更新し、Flask経由で実行できる状態を作る。次に `services/modes.py`、`templates/index.html`、`static/js/index.js`、`static/css/index.css` を順に編集し、最後にREADMEを更新する。
 
 編集後は以下のコマンドで動作確認を行う。
 
