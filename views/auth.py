@@ -19,6 +19,7 @@ def _get_next_url() -> Optional[str]:
 
 
 @auth_bp.route("/signup", methods=["GET", "POST"])
+@login_required
 def signup():
     if not current_user.is_authenticated:
         flash("新規登録はイニシャルユーザーでログインした場合のみ利用できます。", "error")
@@ -65,7 +66,7 @@ def login():
             login_user(user)
             flash("ログインに成功しました。", "success")
             next_url = _get_next_url()
-            return redirect(next_url or url_for("main.index"))
+            return redirect(next_url or url_for("main.mode_select"))
 
         flash("ユーザー名またはパスワードが正しくありません。", "error")
 

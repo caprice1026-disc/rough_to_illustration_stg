@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+
+<div class="row align-items-center g-4 mb-4">
+  <div class="col-lg-12">
+    <h1 class="hero-title mb-2">モード選択</h1>
+    <p class="subtle-text mb-3">用途に合わせて生成モードを選択してください。カードを選ぶと該当画面に移動します。</p>
+  </div>
+</div>
+
+<div class="card glass-card">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="card-title mb-0">生成モード</h2>
+      <span class="option-chip"><i class="bi bi-grid-1x2"></i> モード一覧</span>
+    </div>
+
+    <div class="mode-card-group" role="list">
+      {% for mode in modes %}
+      {% if mode.id == 'rough_with_instructions' %}
+      {% set mode_usage = 'ラフから仕上げを指示したいとき' %}
+      {% set mode_required = 'ラフスケッチ1枚' %}
+      {% set mode_result = '指示に沿った仕上げイラスト' %}
+      {% elif mode.id == 'reference_style_colorize' %}
+      {% set mode_usage = '完成絵のタッチでラフを仕上げたいとき' %}
+      {% set mode_required = '完成絵1枚＋ラフ1枚' %}
+      {% set mode_result = '参照絵柄に合わせた着色・仕上げ' %}
+      {% elif mode.id == 'inpaint_outpaint' %}
+      {% set mode_usage = '一部修正や余白の拡張をしたいとき' %}
+      {% set mode_required = '編集対象画像1枚（マスク使用）' %}
+      {% set mode_result = '指定範囲のみ修正/拡張' %}
+      {% elif mode.id == 'chat_mode' %}
+      {% set mode_usage = 'テキスト相談や対話しながら生成したいとき' %}
+      {% set mode_required = 'テキスト/画像（チャットで選択）' %}
+      {% set mode_result = 'チャット履歴に沿った応答/生成' %}
+      {% else %}
+      {% set mode_usage = '' %}
+      {% set mode_required = '' %}
+      {% set mode_result = '' %}
+      {% endif %}
+      {% if mode.id == 'chat_mode' %}
+      {% set mode_url = url_for('chat.index') %}
+      {% else %}
+      {% set mode_url = url_for('main.index', mode=mode.id) %}
+      {% endif %}
+      {% if mode.enabled %}
+      <a class="mode-card {% if mode.id == current_mode %}is-active{% endif %}" href="{{ mode_url }}">
+      {% else %}
+      <div class="mode-card is-disabled" aria-disabled="true">
+      {% endif %}
+        <span class="mode-card-body">
+          <span class="mode-card-header">
+            <span class="mode-card-title">{{ mode.label }}</span>
+            {% if not mode.enabled %}<span class="mode-card-badge">準備中</span>{% endif %}
+          </span>
+          <span class="mode-card-description">{{ mode.description }}</span>
+          <span class="mode-card-meta">
+            <span class="mode-card-row">
+              <span class="mode-card-label">用途</span>
+              <span class="mode-card-value">{{ mode_usage }}</span>
+            </span>
+            <span class="mode-card-row">
+              <span class="mode-card-label">必要画像</span>
+              <span class="mode-card-value">{{ mode_required }}</span>
+            </span>
+            <span class="mode-card-row">
+              <span class="mode-card-label">結果</span>
+              <span class="mode-card-value">{{ mode_result }}</span>
+            </span>
+          </span>
+        </span>
+      {% if mode.enabled %}
+      </a>
+      {% else %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

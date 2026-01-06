@@ -30,82 +30,21 @@
               <p class="section-description mb-0">用途に合わせて生成方法を選択します。モードによって必要な入力が切り替わります。</p>
             </div>
             <div class="mode-switch mb-3">
-              <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
                 <div>
-                  <h5 class="mb-0">モード</h5>
-                  <small class="text-white-50" id="modeDescription">
-                    {% for mode in modes %}
-                    {% if mode.id == current_mode %}
-                    {{ mode.description }}
-                    {% endif %}
-                    {% endfor %}
-                  </small>
+                  <h5 class="mb-1">現在のモード</h5>
+                  {% for mode in modes %}
+                  {% if mode.id == current_mode %}
+                  <div class="fw-semibold">{{ mode.label }}</div>
+                  <small class="text-white-50">{{ mode.description }}</small>
+                  {% endif %}
+                  {% endfor %}
                 </div>
-              </div>
-              <div class="mode-card-group" id="modeCards" role="radiogroup" aria-label="生成モード">
-                {% for mode in modes %}
-                {% if mode.id == 'rough_with_instructions' %}
-                {% set mode_usage = 'ラフから仕上げを指示したいとき' %}
-                {% set mode_required = 'ラフスケッチ1枚' %}
-                {% set mode_result = '指示に沿った仕上げイラスト' %}
-                {% elif mode.id == 'reference_style_colorize' %}
-                {% set mode_usage = '完成絵のタッチでラフを仕上げたいとき' %}
-                {% set mode_required = '完成絵1枚＋ラフ1枚' %}
-                {% set mode_result = '参照絵柄に合わせた着色・仕上げ' %}
-                {% elif mode.id == 'inpaint_outpaint' %}
-                {% set mode_usage = '一部修正や余白の拡張をしたいとき' %}
-                {% set mode_required = '編集対象画像1枚（マスク使用）' %}
-                {% set mode_result = '指定範囲のみ修正/拡張' %}
-                {% elif mode.id == 'chat_mode' %}
-                {% set mode_usage = 'テキスト相談や対話しながら生成したいとき' %}
-                {% set mode_required = 'テキスト/画像（チャットで選択）' %}
-                {% set mode_result = 'チャット履歴に沿った応答/生成' %}
-                {% else %}
-                {% set mode_usage = '' %}
-                {% set mode_required = '' %}
-                {% set mode_result = '' %}
-                {% endif %}
-                <label class="mode-card {% if mode.id == current_mode %}is-active{% endif %} {% if not mode.enabled %}is-disabled{% endif %}">
-                  <input
-                    type="radio"
-                    name="mode-card"
-                    class="mode-card-input"
-                    data-mode="{{ mode.id }}"
-                    data-mode-description="{{ mode.description }}"
-                    {% if mode.id == current_mode %}checked{% endif %}
-                    {% if not mode.enabled %}disabled aria-disabled="true"{% endif %}
-                  >
-                  <span class="mode-card-body">
-                    <span class="mode-card-header">
-                      <span class="mode-card-title">{{ mode.label }}</span>
-                      {% if not mode.enabled %}<span class="mode-card-badge">準備中</span>{% endif %}
-                    </span>
-                    <span class="mode-card-description">{{ mode.description }}</span>
-                    <span class="mode-card-meta">
-                      <span class="mode-card-row">
-                        <span class="mode-card-label">用途</span>
-                        <span class="mode-card-value">{{ mode_usage }}</span>
-                      </span>
-                      <span class="mode-card-row">
-                        <span class="mode-card-label">必要画像</span>
-                        <span class="mode-card-value">{{ mode_required }}</span>
-                      </span>
-                      <span class="mode-card-row">
-                        <span class="mode-card-label">結果</span>
-                        <span class="mode-card-value">{{ mode_result }}</span>
-                      </span>
-                    </span>
-                  </span>
-                </label>
-                {% endfor %}
-              </div>
-            </div>
-
-            <div class="chat-mode-panel d-none" data-mode-visible="chat_mode">
-              <div class="alert alert-info border-0 mb-0">
-                <h6 class="mb-1"><i class="bi bi-chat-left-text me-1"></i> チャットモードへ移動</h6>
-                <p class="mb-2">チャット欄のメニューから既存モードを選択し、会話の流れで生成や編集が行えます。</p>
-                <a class="btn btn-primary" href="{{ url_for('chat.index') }}">チャット画面を開く</a>
+                <div class="text-md-end">
+                  <a class="btn btn-outline-light" href="{{ url_for('main.mode_select') }}">
+                    <i class="bi bi-grid me-1"></i> モードを選び直す
+                  </a>
+                </div>
               </div>
             </div>
 
@@ -118,9 +57,9 @@
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <div>
                   <h5 class="mb-0">マイプリセット</h5>
-                  <small class="text-white-50 d-none" data-mode-visible="rough_with_instructions">色とポーズの組み合わせを保存して再利用できます。</small>
-                  <small class="text-white-50 d-none" data-mode-visible="reference_style_colorize">追加指示のテンプレートを保存して再利用できます。</small>
-                  <small class="text-white-50 d-none" data-mode-visible="inpaint_outpaint">編集指示のテンプレートを保存して再利用できます。</small>
+                  <small class="text-white-50 {% if current_mode != 'rough_with_instructions' %}d-none{% endif %}" data-mode-visible="rough_with_instructions">色とポーズの組み合わせを保存して再利用できます。</small>
+                  <small class="text-white-50 {% if current_mode != 'reference_style_colorize' %}d-none{% endif %}" data-mode-visible="reference_style_colorize">追加指示のテンプレートを保存して再利用できます。</small>
+                  <small class="text-white-50 {% if current_mode != 'inpaint_outpaint' %}d-none{% endif %}" data-mode-visible="inpaint_outpaint">編集指示のテンプレートを保存して再利用できます。</small>
                 </div>
                 <span class="badge preset-badge"><i class="bi bi-collection me-1"></i> {{ user_presets|length }} 件</span>
               </div>
@@ -152,9 +91,9 @@
                 <div class="col-md-8 text-md-end">
                   <input type="hidden" name="preset_color" id="preset_color_value" form="presetCreateForm">
                   <input type="hidden" name="preset_pose" id="preset_pose_value" form="presetCreateForm">
-                  <small class="text-white-50 d-block d-none" data-mode-visible="rough_with_instructions">下の色・ポーズ欄の現在の入力を保存します。</small>
-                  <small class="text-white-50 d-block d-none" data-mode-visible="reference_style_colorize">下の追加指示の現在の入力を保存します。</small>
-                  <small class="text-white-50 d-block d-none" data-mode-visible="inpaint_outpaint">下の追加指示の現在の入力を保存します。</small>
+                  <small class="text-white-50 d-block {% if current_mode != 'rough_with_instructions' %}d-none{% endif %}" data-mode-visible="rough_with_instructions">下の色・ポーズ欄の現在の入力を保存します。</small>
+                  <small class="text-white-50 d-block {% if current_mode != 'reference_style_colorize' %}d-none{% endif %}" data-mode-visible="reference_style_colorize">下の追加指示の現在の入力を保存します。</small>
+                  <small class="text-white-50 d-block {% if current_mode != 'inpaint_outpaint' %}d-none{% endif %}" data-mode-visible="inpaint_outpaint">下の追加指示の現在の入力を保存します。</small>
                   <button class="btn btn-primary mt-2" type="submit" form="presetCreateForm"><i class="bi bi-bookmark-plus me-1"></i> プリセット保存</button>
                 </div>
               </div>
@@ -213,7 +152,7 @@
               </div>
             </div>
 
-            <div class="edit-panel d-none mt-3" data-mode-visible="inpaint_outpaint">
+            <div class="edit-panel mt-3 {% if current_mode != 'inpaint_outpaint' %}d-none{% endif %}" data-mode-visible="inpaint_outpaint">
               <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
                   <h5 class="mb-1">編集用画像</h5>
