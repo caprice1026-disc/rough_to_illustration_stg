@@ -143,6 +143,19 @@ def index():
     )
 
 
+@main_bp.route("/modes")
+@login_required
+def mode_select():
+    """生成モードの選択画面を表示する。"""
+
+    current_mode = normalize_mode_id(request.args.get("mode"))
+    return render_template(
+        "mode_select.html",
+        modes=ALL_MODES,
+        current_mode=current_mode,
+    )
+
+
 @main_bp.route("/download")
 @login_required
 def download():
