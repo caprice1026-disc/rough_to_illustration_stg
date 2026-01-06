@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from flask import Flask
+from flask import Flask, request
 
 from config import Config
 from extensions import db, login_manager
 from models import User
+from services.modes import (
+    ALL_MODES,
+    MODE_CHAT,
+    MODE_INPAINT_OUTPAINT,
+    MODE_REFERENCE_STYLE_COLORIZE,
+    MODE_ROUGH_WITH_INSTRUCTIONS,
+    normalize_mode_id,
+)
 from views.auth import auth_bp
 from views.chat import chat_bp
 from views.main import main_bp
@@ -30,6 +38,7 @@ def create_app(config_object: object | None = None) -> Flask:
         ensure_initial_user(app)
 
     register_blueprints(app)
+    register_context_processors(app)
     return app
 
 
@@ -63,6 +72,40 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(auth_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(main_bp)
+
+
+def register_context_processors(app: Flask) -> None:
+    """共通で利用するテンプレート変数を登録する。"""
+
+    endpoint_mode_map = {
+        "main.generate_rough": MODE_ROUGH_WITH_INSTRUCTIONS.id,
+        "main.generate_reference": MODE_REFERENCE_STYLE_COLORIZE.id,
+        "main.generate_edit": MODE_INPAINT_OUTPAINT.id,
+        "chat.index": MODE_CHAT.id,
+    }
+
+    @app.context_processor
+    def inject_mode_context() -> dict[str, object]:
+        endpoint = request.endpoint
+        current_mode: str | None = None
+
+        if endpoint == "main.mode_select":
+            current_mode = normalize_mode_id(request.args.get("mode"))
+        elif endpoint in endpoint_mode_map:
+            current_mode = endpoint_mode_map[endpoint]
+
+        current_mode_label = None
+        if current_mode:
+            current_mode_label = next(
+                (mode.label for mode in ALL_MODES if mode.id == current_mode),
+                None,
+            )
+
+        return {
+            "modes": ALL_MODES,
+            "current_mode": current_mode,
+            "current_mode_label": current_mode_label,
+        }
 
 
 app = create_app()
