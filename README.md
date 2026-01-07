@@ -35,8 +35,10 @@
 2. `.env` に API キーなどを設定
    ```bash
    GEMINI_API_KEY="<GeminiのAPIキー>"     # 互換のため GOOGLE_API_KEY でも可
-   SECRET_KEY="任意の秘密鍵"             # 省略時はデフォルト値を使用
+   SECRET_KEY="任意の秘密鍵"             # 必須: 未設定だと起動を停止します
    DATABASE_URL="sqlite:///app.db"      # 任意、未指定ならSQLiteファイルを利用
+   APP_ENV="development"                # production で debug を強制無効化
+   APP_DEBUG="true"                     # 任意: APP_ENV=production 時は無視
    ```
 3. データベース初期化と初回ユーザー作成 (例)
    ```bash

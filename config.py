@@ -8,10 +8,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_debug(app_env: str) -> bool:
+    if app_env.strip().lower() == "production":
+        return False
+    raw_debug = os.environ.get("APP_DEBUG")
+    if raw_debug is None:
+        raw_debug = os.environ.get("FLASK_DEBUG")
+    if raw_debug is None:
+        return True
+    return _env_bool(raw_debug)
+
+
 class Config:
     """Flaskアプリの設定値をまとめたクラス。"""
 
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
+    SECRET_KEY = os.environ.get("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///app.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(128 * 1024 * 1024)))
@@ -19,6 +36,8 @@ class Config:
     MAX_IMAGE_WIDTH = int(os.environ.get("MAX_IMAGE_WIDTH", "8192"))
     MAX_IMAGE_HEIGHT = int(os.environ.get("MAX_IMAGE_HEIGHT", "8192"))
     MAX_IMAGE_PIXELS = int(os.environ.get("MAX_IMAGE_PIXELS", str(64 * 1024 * 1024)))
+    APP_ENV = os.environ.get("APP_ENV", "development")
+    DEBUG = _resolve_debug(APP_ENV)
     SESSION_COOKIE_SAMESITE = "Lax"
     WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]
     INITIAL_USER_USERNAME = os.environ.get("INITIAL_USER_USERNAME")

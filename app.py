@@ -21,6 +21,7 @@ def create_app(config_object: object | None = None) -> Flask:
         else:
             app.config.from_object(config_object)
 
+    ensure_secret_key(app)
     db.init_app(app)
     login_manager.init_app(app)
     csrf.init_app(app)
@@ -34,6 +35,15 @@ def create_app(config_object: object | None = None) -> Flask:
 
     register_blueprints(app)
     return app
+
+
+def ensure_secret_key(app: Flask) -> None:
+    """SECRET_KEY が設定されていない場合は起動を停止する。"""
+
+    secret_key = app.config.get("SECRET_KEY")
+    if not secret_key:
+        app.logger.critical("SECRET_KEY is not set. Set it in .env before starting.")
+        raise RuntimeError("SECRET_KEY is not set. Set it in .env before starting.")
 
 
 def ensure_initial_user(app: Flask) -> None:
@@ -108,4 +118,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_enabled = bool(app.config.get("DEBUG"))
+    app.run(debug=debug_enabled)
