@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Flask, jsonify, redirect, request
 from flask_wtf.csrf import CSRFError
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
 from extensions import csrf, db, login_manager
@@ -21,6 +22,7 @@ def create_app(config_object: object | None = None) -> Flask:
         else:
             app.config.from_object(config_object)
 
+    apply_proxy_fix(app)
     ensure_secret_key(app)
     db.init_app(app)
     login_manager.init_app(app)
@@ -35,6 +37,22 @@ def create_app(config_object: object | None = None) -> Flask:
 
     register_blueprints(app)
     return app
+
+
+def apply_proxy_fix(app: Flask) -> None:
+    """リバースプロキシ配下で X-Forwarded-* ヘッダーを反映する。"""
+
+    if app.config.get("APP_ENV", "").strip().lower() != "production":
+        return
+
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,
+        x_proto=1,
+        x_host=1,
+        x_port=1,
+        x_prefix=1,
+    )
 
 
 def ensure_secret_key(app: Flask) -> None:

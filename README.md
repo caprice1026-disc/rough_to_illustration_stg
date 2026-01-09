@@ -75,6 +75,20 @@ docker run --rm -p 5000:5000 \
 - `APP_DEBUG`: 任意。`APP_ENV=production` 時は無視。
 - `INITIAL_USER_USERNAME` / `INITIAL_USER_EMAIL` / `INITIAL_USER_PASSWORD`: 任意。初回ユーザーを自動作成する場合に指定。
 
+## HTTPS前提の設定
+本番環境で `APP_ENV=production` を指定すると、以下のセキュリティ関連設定が有効になります。
+- セッションCookieに `Secure` / `HttpOnly` を付与
+- `PREFERRED_URL_SCHEME` を `https` に固定
+
+HTTPS終端がロードバランサー側にある場合は、アプリケーション側でHTTPSが前提になっている点に注意してください。
+
+## プロキシ配下での注意点
+ロードバランサーやリバースプロキシ配下で動作させる場合、`X-Forwarded-*` ヘッダーを正しく反映するために `ProxyFix` を適用しています。
+
+- `APP_ENV=production` のときのみ `ProxyFix` が有効になります。
+- プロキシ側で `X-Forwarded-Proto` / `X-Forwarded-For` / `X-Forwarded-Host` などを適切に付与してください。
+- 直接アプリケーションにアクセスさせる構成では、プロキシヘッダーを付与しないようにしてください。
+
 ### UIのヒント
 - 画面上部の「生成」「チャット」タブで画面を切り替えられます。
 - 生成タブ内の「生成モード」セレクトで入力項目が切り替わります。
