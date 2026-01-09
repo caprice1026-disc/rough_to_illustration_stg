@@ -25,6 +25,10 @@ def _resolve_debug(app_env: str) -> bool:
     return _env_bool(raw_debug)
 
 
+def _is_production(app_env: str) -> bool:
+    return app_env.strip().lower() == "production"
+
+
 class Config:
     """Flaskアプリの設定値をまとめたクラス。"""
 
@@ -38,6 +42,9 @@ class Config:
     MAX_IMAGE_PIXELS = int(os.environ.get("MAX_IMAGE_PIXELS", str(64 * 1024 * 1024)))
     APP_ENV = os.environ.get("APP_ENV", "development")
     DEBUG = _resolve_debug(APP_ENV)
+    SESSION_COOKIE_SECURE = _is_production(APP_ENV)
+    SESSION_COOKIE_HTTPONLY = _is_production(APP_ENV)
+    PREFERRED_URL_SCHEME = "https" if _is_production(APP_ENV) else "http"
     SESSION_COOKIE_SAMESITE = "Lax"
     WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]
     INITIAL_USER_USERNAME = os.environ.get("INITIAL_USER_USERNAME")
