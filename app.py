@@ -4,8 +4,10 @@ from flask import Flask, jsonify, redirect, request
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from sqlalchemy import inspect
+
 from config import Config
-from extensions import csrf, db, login_manager
+from extensions import csrf, db, login_manager, migrate
 from models import User
 from views.api import api_bp
 from views.spa import spa_bp
@@ -26,6 +28,7 @@ def create_app(config_object: object | None = None) -> Flask:
     ensure_secret_key(app)
     ensure_database_url(app)
     db.init_app(app)
+    migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
     login_manager.login_view = "spa.index"
@@ -33,7 +36,6 @@ def create_app(config_object: object | None = None) -> Flask:
     register_security_handlers(app)
 
     with app.app_context():
-        db.create_all()
         ensure_initial_user(app)
 
     register_blueprints(app)
@@ -80,6 +82,11 @@ def ensure_database_url(app: Flask) -> None:
 
 def ensure_initial_user(app: Flask) -> None:
     """環境変数からイニシャルユーザーを作成する。"""
+
+    inspector = inspect(db.engine)
+    if "user" not in inspector.get_table_names():
+        app.logger.info("ユーザーテーブルが存在しないためイニシャルユーザー作成をスキップしました。")
+        return
 
     username = app.config.get("INITIAL_USER_USERNAME")
     email = app.config.get("INITIAL_USER_EMAIL")

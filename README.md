@@ -42,15 +42,21 @@
    MAX_FORM_MEMORY_SIZE="33554432"      # 任意: フォームメモリ上限 (32MB)
    ```
    - `.env` はローカル開発専用です。本番（Cloud Run など）では Secret Manager から環境変数へ注入してください。
-3. データベース初期化と初回ユーザー作成（例）
+3. データベース初期化とマイグレーション
+   ```bash
+   flask --app app.py db init
+   flask --app app.py db migrate -m "initial"
+   flask --app app.py db upgrade
+   ```
+4. 初回ユーザー作成（任意）
    ```bash
    flask --app app.py shell
    >>> from app import db, User
-   >>> db.create_all()
    >>> u = User(username="demo", email="demo@example.com")
    >>> u.set_password("password123")
    >>> db.session.add(u); db.session.commit(); exit()
    ```
+   - `INITIAL_USER_USERNAME` / `INITIAL_USER_EMAIL` / `INITIAL_USER_PASSWORD` を設定している場合は、マイグレーション後の起動時に `ensure_initial_user` が自動実行されます。
 
 ## 起動方法
 ```bash
@@ -120,9 +126,39 @@ HTTPS終端がロードバランサー側にある場合は、アプリケーシ
 ### データベース / Cloud SQL
 - `DATABASE_URL` は本番で必須です（未設定の場合は起動エラーになります）。
 - Cloud SQL を利用する場合は、SQLAlchemy が理解できる接続文字列を `DATABASE_URL` に設定してください。
-  - 例: Cloud Run の Cloud SQL 接続機能を使う場合は `/cloudsql/<INSTANCE_CONNECTION_NAME>` のUnixソケットを使った接続文字列を指定します。
+  - 例（MySQL/Unixソケット）: `mysql+pymysql://USER:PASSWORD@/DBNAME?unix_socket=/cloudsql/INSTANCE_CONNECTION_NAME`
   - 例: 専用のPythonコネクタを使う場合は `cloud-sql-python-connector` を `requirements.txt` に追加し、`app.py` または `extensions.py` 側でエンジン生成ロジックを実装してください。
-- 現状は `app.py` の `db.create_all()` で初期化しています。本番運用ではマイグレーションツール（例: Flask-Migrate）の導入を検討してください。
+- 本番運用では `flask db upgrade` を実行してから Cloud Run をデプロイしてください（マイグレーション後に `ensure_initial_user` が動作します）。
+
+### マイグレーション運用
+- マイグレーションの作成と適用は Flask-Migrate を利用します。
+  ```bash
+  flask --app app.py db init
+  flask --app app.py db migrate -m "describe change"
+  flask --app app.py db upgrade
+  ```
+- Cloud Run へデプロイする前に、ローカルまたはCI/CDで `flask db upgrade` を実行してスキーマを最新化してください。
+
+### Cloud Run（GUI）デプロイ手順
+1. 事前準備
+   - Artifact Registry にリポジトリを作成
+   - Cloud SQL インスタンスを作成（MySQL）
+   - Secret Manager に以下を登録
+     - `SECRET_KEY`
+     - `GEMINI_API_KEY`
+     - `DATABASE_URL`
+     - `CHAT_IMAGE_BUCKET`
+2. Cloud Run コンソールで「サービスを作成」
+   - コンテナイメージを選択（Artifact Registry のイメージ）
+3. 「接続」→「Cloud SQL 接続を追加」
+   - 対象インスタンスを選択
+   - `DATABASE_URL` に Unix ソケット形式を設定（例: `mysql+pymysql://USER:PASSWORD@/DBNAME?unix_socket=/cloudsql/INSTANCE_CONNECTION_NAME`）
+4. 「変数とシークレット」で環境変数/Secret を紐付け
+   - `SECRET_KEY`, `GEMINI_API_KEY`, `DATABASE_URL`, `CHAT_IMAGE_BUCKET` を Secret Manager から設定
+5. サービスアカウントの権限付与
+   - Cloud SQL Client 権限
+   - `CHAT_IMAGE_BUCKET` 用に Storage Object Admin などの権限を付与
+6. デプロイを実行
 
 ### チャット画像の保存先
 - チャット画像は Cloud Storage に保存されます。バケット名は `CHAT_IMAGE_BUCKET` で指定します。

@@ -38,6 +38,19 @@ def _resolve_database_uri(app_env: str) -> str:
     return "sqlite:///app.db"
 
 
+def _resolve_engine_options(app_env: str) -> dict[str, object]:
+    if not _is_production(app_env):
+        return {}
+
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": int(os.environ.get("DB_POOL_RECYCLE", "280")),
+        "pool_size": int(os.environ.get("DB_POOL_SIZE", "5")),
+        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "10")),
+        "pool_timeout": int(os.environ.get("DB_POOL_TIMEOUT", "30")),
+    }
+
+
 class Config:
     """Flaskアプリの設定値をまとめたクラス。"""
 
@@ -45,6 +58,7 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = _resolve_database_uri(APP_ENV)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = _resolve_engine_options(APP_ENV)
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(32 * 1024 * 1024)))
     MAX_FORM_MEMORY_SIZE = int(os.environ.get("MAX_FORM_MEMORY_SIZE", str(32 * 1024 * 1024)))
     MAX_IMAGE_WIDTH = int(os.environ.get("MAX_IMAGE_WIDTH", "8192"))
