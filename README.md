@@ -155,14 +155,45 @@ HTTPS終端がロードバランサー側にある場合は、アプリケーシ
   flask --app app.py db upgrade
   ```
 - 初回セットアップは `flask --app app.py db upgrade` だけで完了します（`db init` は不要です）。
-- Cloud Run へ自動デプロイする前に、CI/CDの前段で `flask --app app.py db upgrade` を実行してスキーマを最新化してください。
+- Cloud Run へ自動デプロイする前に、CI/CDの前段でマイグレーションJobを実行してスキーマを最新化してください。
 - 初期ユーザー作成を自動化する場合は、CI/CDのマイグレーションステップで `flask --app app.py init-db` を一度実行し、完了後は `INITIAL_USER_*` を環境変数から外すことを推奨します。
 
 ### CI/CD（GitHub Push 自動デプロイ）の運用方針
+- Triggerだけの自動デプロイではマイグレーションを挟めないため、`cloudbuild.yaml` 方式に切り替えて「ビルド → マイグレーションJob → デプロイ」を実行します。
 - デプロイ前にマイグレーション専用ステップを必ず実行してください（Cloud Runの起動時に自動適用しません）。
 - 本番: `flask --app app.py db upgrade`
-- 検証: `flask --app app.py init-db`（SQLite + 初期ユーザー作成までまとめて実行）
+- 初回ユーザー作成が必要な場合は、最初の一度だけ `flask --app app.py init-db` を使います。
 - 初期ユーザー作成は一度だけ実行し、以降は環境変数 `INITIAL_USER_*` を外して再実行されないようにします。
+
+#### Cloud Build トリガーの切り替え
+- Cloud Build トリガーの Build configuration を **“Cloud Build config file”** に変更し、`cloudbuild.yaml` を参照させます。
+- `cloudbuild.yaml` の置換変数は環境に合わせて調整してください（`_REGION` / `_SERVICE_NAME` / `_MIGRATION_JOB` / `_AR_REPO` / `_IMAGE_NAME` など）。
+
+#### Cloud Run Job（マイグレーション用）の作成
+Cloud Run Job は一度だけ作成し、以降は Cloud Build がイメージ更新 → Job実行を行います。Jobには **Cloud SQL 接続** と **Secret** を付与し、サービスと同じ環境変数を設定してください。
+
+例（初回作成・本番用）:
+```bash
+gcloud run jobs create rough-to-illustration-migrate \
+  --region asia-northeast1 \
+  --image asia-northeast1-docker.pkg.dev/PROJECT_ID/cloud-run-source-deploy/rough-to-illustration:latest \
+  --command flask \
+  --args --app,app.py,db,upgrade \
+  --set-env-vars APP_ENV=production,CHAT_IMAGE_STORAGE=gcs \
+  --set-secrets SECRET_KEY=SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest \
+  --add-cloudsql-instances INSTANCE_CONNECTION_NAME
+```
+Cloud Build のサービスアカウントには、Cloud Run の更新と Job 実行ができる権限（例: Cloud Run Admin / Service Account User）を付与してください。
+
+初回ユーザー作成を CI/CD で行いたい場合は、最初の1回だけ `cloudbuild.yaml` の `_MIGRATION_ARGS` を以下に変更して実行してください:
+```
+--app,app.py,init-db
+```
+その後は `--app,app.py,db,upgrade` に戻すことを推奨します。
+
+#### 検証環境（SQLite）での注意点
+- SQLite は Cloud Run インスタンスのローカルファイルに作成されるため、デプロイやスケールで消える前提です。
+- 検証用途で使う場合は `APP_ENV=staging`、`DATABASE_URL=sqlite:///app.db`、`CHAT_IMAGE_STORAGE=local` を設定してください。
 
 ### Cloud Run（GUI）デプロイ手順
 1. 事前準備
