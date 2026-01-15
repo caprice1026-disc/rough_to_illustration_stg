@@ -4,7 +4,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    ALEMBIC_CONFIG=/app/alembic.ini
+    ALEMBIC_CONFIG=/app/migrations/alembic.ini
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
