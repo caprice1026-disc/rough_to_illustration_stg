@@ -26,11 +26,25 @@ class MissingApiKeyError(RuntimeError):
     """APIキーが設定されていない場合の例外。"""
 
 
+def _env_bool(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @lru_cache(maxsize=1)
 def _client() -> genai.Client:
+    use_vertex = _env_bool(os.environ.get("GOOGLE_GENAI_USE_VERTEXAI"))
+    if use_vertex:
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION") or os.environ.get("GOOGLE_CLOUD_REGION")
+        if not project or not location:
+            raise RuntimeError("Vertex AI requires GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.")
+        return genai.Client(vertexai=True, project=project, location=location)
+
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        raise MissingApiKeyError("APIキーが設定されていません。")
+        raise MissingApiKeyError("API key is not set.")
     return genai.Client(api_key=api_key)
 
 
@@ -50,6 +64,28 @@ def generate_text(prompt: str) -> str:
     response = _client().models.generate_content(
         model=DEFAULT_TEXT_MODEL,
         contents=[prompt],
+        config=types.GenerateContentConfig(response_modalities=["TEXT"]),
+    )
+
+    if getattr(response, "text", None):
+        return response.text
+
+    for part in getattr(response, "parts", []):
+        if getattr(part, "text", None):
+            return part.text
+
+    raise RuntimeError("APIレスポンスにテキストが含まれていません。")
+
+
+def generate_multimodal_text(prompt: str, images: list[Image.Image]) -> str:
+    """画像を含むマルチモーダル入力でテキスト返信を生成する。"""
+
+    contents: list[Any] = [prompt]
+    contents.extend(images)
+
+    response = _client().models.generate_content(
+        model=DEFAULT_TEXT_MODEL,
+        contents=contents,
         config=types.GenerateContentConfig(response_modalities=["TEXT"]),
     )
 

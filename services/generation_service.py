@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import os
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -480,6 +481,14 @@ def run_edit_generation(
 
     normalized_mode = "outpaint" if edit_mode == "outpaint" else "inpaint"
     prompt = build_edit_prompt(edit_instruction, normalized_mode)
+
+    if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise GenerationError(
+            "インペイント/アウトペイントはVertex AIが必要です。"
+            " GOOGLE_GENAI_USE_VERTEXAI=true と "
+            "GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION を設定してください。"
+        )
+
 
     generated = edit_image_with_mask(
         prompt=prompt,

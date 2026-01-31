@@ -283,10 +283,12 @@ const applyPreset = () => {
   const modeId = elements.generationMode?.value || 'rough_with_instructions';
   if (modeId === 'reference_style_colorize') {
     const referenceInstruction = document.getElementById('referenceInstruction');
-    if (referenceInstruction) referenceInstruction.value = preset.color_instruction || '';
+    if (referenceInstruction) referenceInstruction.value = preset.reference_instruction || '';
   } else if (modeId === 'inpaint_outpaint') {
     const editInstruction = document.getElementById('editInstruction');
-    if (editInstruction) editInstruction.value = preset.color_instruction || '';
+    const editModeSelect = document.getElementById('editModeSelect');
+    if (editInstruction) editInstruction.value = preset.edit_instruction || '';
+    if (editModeSelect) editModeSelect.value = preset.edit_mode || 'inpaint';
   } else {
     const colorInstruction = document.getElementById('colorInstruction');
     const poseInstruction = document.getElementById('poseInstruction');
@@ -304,18 +306,18 @@ const buildPresetPayload = () => {
     return {
       mode: modeId,
       name,
-      color_instruction: referenceInstruction?.value || '',
-      pose_instruction: '',
+      reference_instruction: referenceInstruction?.value || '',
     };
   }
 
   if (modeId === 'inpaint_outpaint') {
     const editInstruction = document.getElementById('editInstruction');
+    const editModeSelect = document.getElementById('editModeSelect');
     return {
       mode: modeId,
       name,
-      color_instruction: editInstruction?.value || '',
-      pose_instruction: '',
+      edit_instruction: editInstruction?.value || '',
+      edit_mode: editModeSelect?.value || 'inpaint',
     };
   }
 
@@ -358,22 +360,9 @@ const toggleGenerationLoading = (isLoading) => {
   }
 };
 
-const toggleChatExtras = (modeId) => {
-  document.querySelectorAll('[data-mode-visible]').forEach((el) => {
-    const modes = String(el.dataset.modeVisible || '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const shouldShow = modes.includes(modeId);
-    el.classList.toggle('d-none', !shouldShow);
-    el.querySelectorAll('input, textarea, select').forEach((input) => {
-      input.disabled = !shouldShow;
-    });
-  });
-
-  const mode = state.chatModes.find((item) => item.id === modeId);
+const toggleChatExtras = () => {
   if (elements.chatModeHelper) {
-    elements.chatModeHelper.textContent = mode?.helper || 'モードを選択して送信します。';
+    elements.chatModeHelper.textContent = 'You can attach images and send text.';
   }
 };
 
@@ -456,8 +445,8 @@ const renderChatMessages = (messages) => {
   elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 };
 
-const loadPresets = async () => {
-  const payload = await apiFetch('/api/presets');
+const loadPresets = async (modeId) => {
+  const payload = await apiFetch(`/api/presets?mode=${encodeURIComponent(modeId)}`);
   state.presets = payload.presets || [];
   renderPresets();
 };
@@ -576,7 +565,8 @@ const handlePresetDelete = async () => {
   const preset = findPreset();
   if (!preset) return;
   try {
-    await apiFetch(`/api/presets/${preset.id}`, { method: 'DELETE' });
+    const modeId = elements.generationMode?.value || 'rough_with_instructions';
+    await apiFetch(`/api/presets/${preset.id}?mode=${encodeURIComponent(modeId)}`, { method: 'DELETE' });
     state.presets = state.presets.filter((item) => item.id !== preset.id);
     renderPresets();
     showStatus('プリセットを削除しました。', 'info');
@@ -679,8 +669,9 @@ const bindEvents = () => {
   }
 
   if (elements.generationMode) {
-    elements.generationMode.addEventListener('change', () => {
+    elements.generationMode.addEventListener('change', async () => {
       updateModePanels(elements.generationMode.value);
+      await loadPresets(elements.generationMode.value);
     });
   }
 
@@ -743,7 +734,9 @@ const bootstrapAppData = async () => {
     toggleChatExtras(elements.chatModeSelect.value);
   }
 
-  await loadPresets();
+  if (defaultMode) {
+    await loadPresets(defaultMode);
+  }
   renderResult(state.lastResult);
 
   const initialView = window.location.hash.replace('#', '') || 'generate';
@@ -752,9 +745,172 @@ const bootstrapAppData = async () => {
   }
 };
 
+const initMaskEditor = () => {
+  const modalEl = document.getElementById('maskEditorModal');
+  const openButton = document.getElementById('openMaskEditorButton');
+  const baseInput = document.getElementById('editBaseInput');
+  const maskInput = document.getElementById('editMaskInput');
+  const editMaskData = document.getElementById('editMaskData');
+  const editBaseData = document.getElementById('editBaseData');
+  const maskPreview = document.getElementById('editMaskPreviewImage');
+  const editModeSelect = document.getElementById('editModeSelect');
+  const baseCanvas = document.getElementById('maskEditorBaseCanvas');
+  const maskCanvas = document.getElementById('maskEditorMaskCanvas');
+  const brushSizeInput = document.getElementById('maskBrushSize');
+  const eraserToggle = document.getElementById('maskEraserToggle');
+  const resetButton = document.getElementById('maskResetButton');
+  const applyButton = document.getElementById('maskApplyButton');
+
+  if (!modalEl || !baseCanvas || !maskCanvas) return;
+
+  const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+  let baseImage = null;
+  let isDrawing = false;
+  let isErasing = false;
+
+  const loadImageFromFile = (file) =>
+    new Promise((resolve, reject) => {
+      if (!file) return reject(new Error('missing file'));
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = event.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const renderCanvases = () => {
+    if (!baseImage) return;
+    baseCanvas.width = baseImage.width;
+    baseCanvas.height = baseImage.height;
+    maskCanvas.width = baseImage.width;
+    maskCanvas.height = baseImage.height;
+
+    const baseCtx = baseCanvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext('2d');
+    if (!baseCtx || !maskCtx) return;
+
+    baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+    baseCtx.drawImage(baseImage, 0, 0);
+
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  };
+
+  const drawAtEvent = (event) => {
+    const rect = maskCanvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * maskCanvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * maskCanvas.height;
+    const ctx = maskCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = brushSizeInput ? Number(brushSizeInput.value || 24) : 24;
+    ctx.globalCompositeOperation = isErasing ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 0.5, y + 0.5);
+    ctx.stroke();
+  };
+
+  const startDraw = (event) => {
+    isDrawing = true;
+    drawAtEvent(event);
+  };
+
+  const moveDraw = (event) => {
+    if (!isDrawing) return;
+    drawAtEvent(event);
+  };
+
+  const stopDraw = () => {
+    isDrawing = false;
+  };
+
+  maskCanvas.style.touchAction = 'none';
+  maskCanvas.addEventListener('pointerdown', startDraw);
+  maskCanvas.addEventListener('pointermove', moveDraw);
+  maskCanvas.addEventListener('pointerup', stopDraw);
+  maskCanvas.addEventListener('pointerleave', stopDraw);
+
+  if (eraserToggle) {
+    eraserToggle.addEventListener('click', () => {
+      isErasing = !isErasing;
+      eraserToggle.classList.toggle('active', isErasing);
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', () => {
+      renderCanvases();
+    });
+  }
+
+  const openEditor = () => {
+    if (!baseImage) {
+      showStatus('編集元画像を選択してください。', 'warning');
+      return;
+    }
+    renderCanvases();
+    if (modal) modal.show();
+  };
+
+  if (openButton) {
+    openButton.addEventListener('click', openEditor);
+  }
+
+  if (baseInput) {
+    baseInput.addEventListener('change', (event) => {
+      const [file] = event.target.files || [];
+      if (!file) return;
+      if (editBaseData) editBaseData.value = '';
+      if (editMaskData) editMaskData.value = '';
+      if (maskPreview) maskPreview.classList.add('d-none');
+      loadImageFromFile(file)
+        .then((img) => {
+          baseImage = img;
+        })
+        .catch(() => {
+          showStatus('画像の読み込みに失敗しました。', 'danger');
+        });
+    });
+  }
+
+  if (maskInput) {
+    maskInput.addEventListener('change', () => {
+      if (editMaskData) editMaskData.value = '';
+      if (maskPreview) maskPreview.classList.add('d-none');
+    });
+  }
+
+  if (applyButton) {
+    applyButton.addEventListener('click', () => {
+      if (!baseImage) return;
+      if (editMaskData) editMaskData.value = maskCanvas.toDataURL('image/png');
+      if (editBaseData) editBaseData.value = baseCanvas.toDataURL('image/png');
+      if (maskPreview) {
+        maskPreview.src = maskCanvas.toDataURL('image/png');
+        maskPreview.classList.remove('d-none');
+      }
+      if (modal) modal.hide();
+    });
+  }
+
+  if (editModeSelect) {
+    editModeSelect.addEventListener('change', () => {
+      if (editMaskData) editMaskData.value = '';
+      if (maskPreview) maskPreview.classList.add('d-none');
+    });
+  }
+};
+
 const initApp = async () => {
   cacheElements();
   bindEvents();
+  initMaskEditor();
 
   try {
     const payload = await apiFetch('/api/me');

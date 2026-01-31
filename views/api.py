@@ -10,10 +10,12 @@ from flask_wtf.csrf import generate_csrf
 
 from extensions import db
 from illust import MissingApiKeyError
-from models import ChatAttachment, ChatMessage, ChatSession, IllustrationPreset, User
+from models import ChatAttachment, ChatMessage, ChatSession, EditPreset, ReferencePreset, RoughPreset, User
 from services import chat_service
 from services.generation_service import (
     GenerationError,
+    decode_uploaded_image_raw,
+    ensure_rgb,
     extension_for_mime_type,
     load_image_path_from_session,
     load_mime_type_from_session,
@@ -54,14 +56,31 @@ def _serialize_user(user: User) -> dict[str, Any]:
     }
 
 
-def _serialize_preset(preset: IllustrationPreset) -> dict[str, Any]:
-    return {
+def _preset_model_for_mode(mode_id: str):
+    if mode_id == MODE_REFERENCE_STYLE_COLORIZE.id:
+        return ReferencePreset
+    if mode_id == MODE_INPAINT_OUTPAINT.id:
+        return EditPreset
+    return RoughPreset
+
+
+def _serialize_preset(preset, mode_id: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "id": preset.id,
         "name": preset.name,
-        "color_instruction": preset.color_instruction,
-        "pose_instruction": preset.pose_instruction,
+        "mode": mode_id,
         "created_at": preset.created_at.isoformat() if preset.created_at else "",
     }
+    if mode_id == MODE_REFERENCE_STYLE_COLORIZE.id:
+        payload["reference_instruction"] = preset.reference_instruction
+        return payload
+    if mode_id == MODE_INPAINT_OUTPAINT.id:
+        payload["edit_instruction"] = preset.edit_instruction
+        payload["edit_mode"] = preset.edit_mode
+        return payload
+    payload["color_instruction"] = preset.color_instruction
+    payload["pose_instruction"] = preset.pose_instruction
+    return payload
 
 
 def _serialize_generation(result) -> dict[str, Any]:
@@ -223,12 +242,14 @@ def options():
 @api_bp.get("/presets")
 @login_required
 def presets():
+    mode = normalize_mode_id(request.args.get("mode"))
+    model = _preset_model_for_mode(mode)
     presets_list = (
-        IllustrationPreset.query.filter_by(user_id=current_user.id)
-        .order_by(IllustrationPreset.created_at.desc())
+        model.query.filter_by(user_id=current_user.id)
+        .order_by(model.created_at.desc())
         .all()
     )
-    return _json({"presets": [_serialize_preset(preset) for preset in presets_list]})
+    return _json({"presets": [_serialize_preset(preset, mode) for preset in presets_list]})
 
 
 @api_bp.post("/presets")
@@ -240,8 +261,8 @@ def create_preset():
 
     mode = normalize_mode_id(data.get("mode"))
     name = (data.get("name") or "").strip()
-    color_instruction = (data.get("color_instruction") or "").strip()
-    pose_instruction = (data.get("pose_instruction") or "").strip()
+    primary = (data.get("color_instruction") or data.get("reference_instruction") or data.get("edit_instruction") or "").strip()
+    secondary = (data.get("pose_instruction") or data.get("edit_mode") or "").strip()
 
     if not name:
         return _error("プリセット名を入力してください。", 400)
@@ -249,33 +270,50 @@ def create_preset():
     if len(name) > 80:
         return _error("プリセット名は80文字以内にしてください。", 400)
 
-    if mode in {MODE_REFERENCE_STYLE_COLORIZE.id, MODE_INPAINT_OUTPAINT.id}:
-        if not color_instruction:
+    if mode == MODE_REFERENCE_STYLE_COLORIZE.id:
+        if not primary:
             return _error("追加指示を入力してください。", 400)
-        pose_instruction = ""
-        if len(color_instruction) > 1000:
+        if len(primary) > 1000:
             return _error("文字数上限を超えています。入力内容を短くしてください。", 400)
+        preset = ReferencePreset(
+            user_id=current_user.id,
+            name=name,
+            reference_instruction=primary,
+        )
+    elif mode == MODE_INPAINT_OUTPAINT.id:
+        if not primary:
+            return _error("追加指示を入力してください。", 400)
+        if len(primary) > 1000:
+            return _error("文字数上限を超えています。入力内容を短くしてください。", 400)
+        preset = EditPreset(
+            user_id=current_user.id,
+            name=name,
+            edit_instruction=primary,
+            edit_mode=secondary or "inpaint",
+        )
     else:
-        if not color_instruction or not pose_instruction:
+        if not primary or not secondary:
             return _error("色とポーズの指示を両方入力してください。", 400)
-        if len(color_instruction) > 200 or len(pose_instruction) > 160:
+        if len(primary) > 200 or len(secondary) > 160:
             return _error("文字数上限を超えています。入力内容を短くしてください。", 400)
+        preset = RoughPreset(
+            user_id=current_user.id,
+            name=name,
+            color_instruction=primary,
+            pose_instruction=secondary,
+        )
 
-    preset = IllustrationPreset(
-        user_id=current_user.id,
-        name=name,
-        color_instruction=color_instruction,
-        pose_instruction=pose_instruction,
-    )
     db.session.add(preset)
     db.session.commit()
-    return _json({"preset": _serialize_preset(preset)}, 201)
+    return _json({"preset": _serialize_preset(preset, mode)}, 201)
 
 
 @api_bp.delete("/presets/<int:preset_id>")
 @login_required
 def delete_preset(preset_id: int):
-    preset = IllustrationPreset.query.filter_by(id=preset_id, user_id=current_user.id).first()
+    mode = normalize_mode_id(request.args.get("mode"))
+    model = _preset_model_for_mode(mode)
+    preset = model.query.filter_by(id=preset_id, user_id=current_user.id).first()
     if not preset:
         return _error("指定されたプリセットが見つかりません。", 404)
 
@@ -454,111 +492,37 @@ def chat_messages():
         return _error("セッションが見つかりません。", 400)
 
     session = _session_or_404(session_id)
-    mode_id = request.form.get("mode_id") or "text_chat"
     user_message = (request.form.get("message") or "").strip()
+    files = request.files.getlist("images")
+
+    if not user_message and not files:
+        return _error("メッセージまたは画像を入力してください。", 400)
 
     try:
         attachments = []
-        if mode_id == "rough_with_instructions":
-            rough_file = request.files.get("rough_image")
-            color_instruction = request.form.get("color_instruction", "")
-            pose_instruction = request.form.get("pose_instruction", "")
-            if not rough_file:
-                raise GenerationError("ラフ画像を選択してください。")
-            attachments.append(("rough", chat_service.save_uploaded_image(rough_file, label="ラフ画像")))
-            user_text = f"色: {color_instruction}\nポーズ: {pose_instruction}".strip()
-            chat_service.add_message(session=session, role="user", text=user_text, mode_id=mode_id, attachments=attachments)
-            chat_service.update_session_title(session, user_text)
-            result = chat_service.run_rough_mode(
-                rough_file=rough_file,
-                color_instruction=color_instruction,
-                pose_instruction=pose_instruction,
-            )
-            assistant_message = chat_service.add_message(
-                session=session,
-                role="assistant",
-                text="イラスト生成が完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "reference_style_colorize":
-            reference_file = request.files.get("reference_image")
-            rough_file = request.files.get("rough_image")
-            if not reference_file or not rough_file:
-                raise GenerationError("完成絵とラフ画像の両方を選択してください。")
-            attachments.append(("reference", chat_service.save_uploaded_image(reference_file, label="完成絵")))
-            attachments.append(("rough", chat_service.save_uploaded_image(rough_file, label="ラフ画像")))
-            chat_service.add_message(
-                session=session,
-                role="user",
-                text="完成絵参照→ラフ着色を依頼",
-                mode_id=mode_id,
-                attachments=attachments,
-            )
-            chat_service.update_session_title(session, "完成絵参照→ラフ着色を依頼")
-            result = chat_service.run_reference_mode(reference_file=reference_file, rough_file=rough_file)
-            assistant_message = chat_service.add_message(
-                session=session,
-                role="assistant",
-                text="参照を反映した仕上げが完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "inpaint_outpaint":
-            base_file = request.files.get("edit_base_image")
-            mask_file = request.files.get("edit_mask_image")
-            edit_mode = request.form.get("edit_mode", "inpaint")
-            edit_instruction = request.form.get("edit_instruction", "")
-            if not base_file or not mask_file:
-                raise GenerationError("編集元画像とマスク画像を選択してください。")
-            attachments.append(("base", chat_service.save_uploaded_image(base_file, label="編集元画像")))
-            attachments.append(("mask", chat_service.save_uploaded_image(mask_file, label="マスク画像")))
-            chat_service.add_message(
-                session=session,
-                role="user",
-                text=edit_instruction or "マスク編集を依頼",
-                mode_id=mode_id,
-                attachments=attachments,
-            )
-            chat_service.update_session_title(session, edit_instruction or "マスク編集を依頼")
-            result = chat_service.run_edit_mode(
-                base_file=base_file,
-                mask_file=mask_file,
-                edit_mode=edit_mode,
-                edit_instruction=edit_instruction,
-            )
-            assistant_message = chat_service.add_message(
-                session=session,
-                role="assistant",
-                text="編集が完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "session_edit":
-            if not user_message:
-                raise GenerationError("追加編集指示を入力してください。")
-            chat_service.add_message(session=session, role="user", text=user_message, mode_id=mode_id)
-            chat_service.update_session_title(session, user_message)
-            result = chat_service.run_session_edit(session, user_message)
-            assistant_message = chat_service.add_message(
-                session=session,
-                role="assistant",
-                text="直近の画像をベースに再生成しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        else:
-            if not user_message:
-                raise GenerationError("メッセージを入力してください。")
-            chat_service.add_message(session=session, role="user", text=user_message, mode_id=mode_id)
-            chat_service.update_session_title(session, user_message)
-            reply = chat_service.generate_text_reply(session, user_message)
-            assistant_message = chat_service.add_message(
-                session=session,
-                role="assistant",
-                text=reply,
-                mode_id=mode_id,
-            )
+        images = []
+        for index, file in enumerate(files):
+            stored = chat_service.save_uploaded_image(file, label=f"添付画像{index + 1}")
+            attachments.append(("image", stored))
+            image = decode_uploaded_image_raw(file, label="添付画像")
+            images.append(ensure_rgb(image))
+
+        chat_service.add_message(
+            session=session,
+            role="user",
+            text=user_message,
+            mode_id="text_chat",
+            attachments=attachments,
+        )
+        chat_service.update_session_title(session, user_message)
+
+        reply = chat_service.generate_multimodal_reply(session, user_message, images)
+        assistant_message = chat_service.add_message(
+            session=session,
+            role="assistant",
+            text=reply,
+            mode_id="text_chat",
+        )
 
         chat_service.touch_session(session)
     except MissingApiKeyError:
@@ -570,3 +534,5 @@ def chat_messages():
         return _error("チャット処理に失敗しました。", 500)
 
     return _json({"assistant": _serialize_chat_message(assistant_message)})
+
+

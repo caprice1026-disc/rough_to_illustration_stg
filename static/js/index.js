@@ -233,6 +233,26 @@ const initImagePreviews = () => {
         clearEditBaseData();
       },
     }),
+    editMask: bindImageUploader({
+      inputId: 'edit_mask_image',
+      previewId: 'editMaskPreviewImage',
+      placeholderId: 'editMaskPlaceholder',
+      metaId: 'editMaskFileMeta',
+      dropzoneId: 'editMaskDropzone',
+      clearButtonId: 'editMaskClearImage',
+      statusTextId: 'editMaskStatusText',
+      statusIconId: 'editMaskStatusIcon',
+      acceptedTypes: ['image/png', 'image/jpeg'],
+      errorText: 'Error: PNG/JPG/JPEG only',
+      onFile: () => {
+        clearEditMaskData();
+        clearEditBaseData();
+      },
+      onClear: () => {
+        clearEditMaskData();
+        clearEditBaseData();
+      },
+    }),
   };
 
   return { ...uploaders, resetEditMaskPreview, maskDropzoneStatus };
@@ -371,6 +391,7 @@ const initPresets = () => {
   const poseTextarea = document.getElementById('pose_instruction');
   const referenceTextarea = document.getElementById('reference_instruction');
   const editTextarea = document.getElementById('edit_instruction');
+  const editModeInput = document.getElementById('editModeInput');
   const modeInput = document.getElementById('generationModeInput');
 
   if (!panel || !presetSelect || !deletePresetId || !applyButton || !presetCreateForm || !presetColorInput || !presetPoseInput || !modeInput) {
@@ -396,6 +417,12 @@ const initPresets = () => {
       return { primary: referenceTextarea, secondary: null };
     }
     if (modeId === 'inpaint_outpaint') {
+      return { primary: editTextarea, secondary: editModeInput };
+    }
+    return { primary: colorTextarea, secondary: poseTextarea };
+  };
+    }
+    if (modeId === 'inpaint_outpaint') {
       return { primary: editTextarea, secondary: null };
     }
     return { primary: colorTextarea, secondary: poseTextarea };
@@ -409,11 +436,17 @@ const initPresets = () => {
     const { primary, secondary } = getModeFields(modeId);
     if (!primary) return;
 
-    primary.value = selected.color || '';
+    primary.value = selected.primary || '';
     primary.dispatchEvent(new Event('input'));
     if (secondary) {
-      secondary.value = selected.pose || '';
+      secondary.value = selected.secondary || '';
       secondary.dispatchEvent(new Event('input'));
+    }
+
+    if (modeId === 'inpaint_outpaint' && secondary) {
+      document.querySelectorAll('[data-edit-mode]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.editMode === secondary.value);
+      });
     }
   };
 
@@ -426,7 +459,7 @@ const initPresets = () => {
   syncDeleteField();
 
   presetCreateForm.addEventListener('submit', () => {
-    // 現在のテキストエリア内容をプリセットとして保存する
+    // 現在のモードに合わせてプリセットを保存する
     const modeId = modeInput.value;
     const { primary, secondary } = getModeFields(modeId);
     if (!primary) return;

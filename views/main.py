@@ -7,7 +7,7 @@ from flask_login import current_user, login_required
 
 from illust import MissingApiKeyError
 from extensions import db
-from models import IllustrationPreset
+from models import EditPreset, ReferencePreset, RoughPreset
 from services.generation_service import (
     GenerationError,
     extension_for_mime_type,
@@ -50,28 +50,63 @@ def _restore_result() -> Optional[str]:
     return existing.image_data_uri
 
 
-def _fetch_presets() -> list[IllustrationPreset]:
-    """現在のユーザーに紐づくプリセットを新しい順で取得する。"""
+def _preset_model_for_mode(mode_id: str):
+    if mode_id == MODE_REFERENCE_STYLE_COLORIZE.id:
+        return ReferencePreset
+    if mode_id == MODE_INPAINT_OUTPAINT.id:
+        return EditPreset
+    return RoughPreset
+
+
+def _fetch_presets(current_mode: str):
+    """現在のモードに対応するプリセット一覧を取得する。"""
 
     if not current_user.is_authenticated:
         return []
 
+    normalized = normalize_mode_id(current_mode)
+    model = _preset_model_for_mode(normalized)
     return (
-        IllustrationPreset.query.filter_by(user_id=current_user.id)
-        .order_by(IllustrationPreset.created_at.desc())
+        model.query.filter_by(user_id=current_user.id)
+        .order_by(model.created_at.desc())
         .all()
     )
 
-def _build_presets_payload(user_presets: list[IllustrationPreset]) -> list[dict[str, str]]:
-    return [
-        {
-            "id": preset.id,
-            "name": preset.name,
-            "color": preset.color_instruction,
-            "pose": preset.pose_instruction,
-        }
-        for preset in user_presets
-    ]
+
+def _build_presets_payload(user_presets, mode_id: str) -> list[dict[str, str]]:
+    payload: list[dict[str, str]] = []
+    for preset in user_presets:
+        if mode_id == MODE_REFERENCE_STYLE_COLORIZE.id:
+            payload.append(
+                {
+                    "id": preset.id,
+                    "name": preset.name,
+                    "mode": mode_id,
+                    "primary": preset.reference_instruction,
+                    "secondary": "",
+                }
+            )
+        elif mode_id == MODE_INPAINT_OUTPAINT.id:
+            payload.append(
+                {
+                    "id": preset.id,
+                    "name": preset.name,
+                    "mode": mode_id,
+                    "primary": preset.edit_instruction,
+                    "secondary": preset.edit_mode or "inpaint",
+                }
+            )
+        else:
+            payload.append(
+                {
+                    "id": preset.id,
+                    "name": preset.name,
+                    "mode": mode_id,
+                    "primary": preset.color_instruction,
+                    "secondary": preset.pose_instruction,
+                }
+            )
+    return payload
 
 
 def _mode_url_map() -> dict[str, str]:
@@ -88,7 +123,7 @@ def _redirect_to_mode(mode_id: Optional[str]):
 
 
 def _build_common_context(current_mode: str, image_data: Optional[str]) -> dict[str, object]:
-    user_presets = _fetch_presets()
+    user_presets = _fetch_presets(current_mode)
     return {
         "image_data": image_data,
         "modes": ALL_MODES,
@@ -96,7 +131,7 @@ def _build_common_context(current_mode: str, image_data: Optional[str]) -> dict[
         "aspect_ratio_options": ASPECT_RATIO_OPTIONS,
         "resolution_options": RESOLUTION_OPTIONS,
         "user_presets": user_presets,
-        "presets_payload": _build_presets_payload(user_presets),
+        "presets_payload": _build_presets_payload(user_presets, current_mode),
         "mode_routes": _mode_url_map(),
     }
 
@@ -287,12 +322,12 @@ def download():
 @main_bp.route("/presets", methods=["POST"])
 @login_required
 def create_preset():
-    """各モードの指示をプリセットとして保存する。"""
+    """モード別のプリセットを作成する。"""
 
     mode = normalize_mode_id(request.form.get("mode"))
     name = (request.form.get("preset_name") or "").strip()
-    color_instruction = (request.form.get("preset_color") or "").strip()
-    pose_instruction = (request.form.get("preset_pose") or "").strip()
+    primary = (request.form.get("preset_color") or "").strip()
+    secondary = (request.form.get("preset_pose") or "").strip()
 
     if not name:
         flash("プリセット名を入力してください。", "error")
@@ -302,29 +337,42 @@ def create_preset():
         flash("プリセット名は80文字以内にしてください。", "error")
         return _redirect_to_mode(mode)
 
-    if mode in {MODE_REFERENCE_STYLE_COLORIZE.id, MODE_INPAINT_OUTPAINT.id}:
-        if not color_instruction:
+    if mode == MODE_REFERENCE_STYLE_COLORIZE.id:
+        if not primary:
             flash("追加指示を入力してください。", "error")
             return _redirect_to_mode(mode)
-        pose_instruction = ""
-        if len(color_instruction) > 1000:
+        if len(primary) > 1000:
             flash("文字数上限を超えています。入力内容を短くしてください。", "error")
             return _redirect_to_mode(mode)
+        preset = ReferencePreset(user_id=current_user.id, name=name, reference_instruction=primary)
+    elif mode == MODE_INPAINT_OUTPAINT.id:
+        if not primary:
+            flash("追加指示を入力してください。", "error")
+            return _redirect_to_mode(mode)
+        if len(primary) > 1000:
+            flash("文字数上限を超えています。入力内容を短くしてください。", "error")
+            return _redirect_to_mode(mode)
+        edit_mode = secondary or "inpaint"
+        preset = EditPreset(
+            user_id=current_user.id,
+            name=name,
+            edit_instruction=primary,
+            edit_mode=edit_mode,
+        )
     else:
-        if not color_instruction or not pose_instruction:
+        if not primary or not secondary:
             flash("色とポーズの指示を両方入力してください。", "error")
             return _redirect_to_mode(mode)
-
-        if len(color_instruction) > 200 or len(pose_instruction) > 160:
+        if len(primary) > 200 or len(secondary) > 160:
             flash("文字数上限を超えています。入力内容を短くしてください。", "error")
             return _redirect_to_mode(mode)
+        preset = RoughPreset(
+            user_id=current_user.id,
+            name=name,
+            color_instruction=primary,
+            pose_instruction=secondary,
+        )
 
-    preset = IllustrationPreset(
-        user_id=current_user.id,
-        name=name,
-        color_instruction=color_instruction,
-        pose_instruction=pose_instruction,
-    )
     db.session.add(preset)
     db.session.commit()
     flash("プリセットを保存しました。", "success")
@@ -334,17 +382,16 @@ def create_preset():
 @main_bp.route("/presets/delete", methods=["POST"])
 @login_required
 def delete_preset():
-    """選択されたプリセットを削除する。"""
+    """プリセットを削除する。"""
 
     mode = normalize_mode_id(request.form.get("mode"))
     preset_id = request.form.get("preset_id", type=int)
     if not preset_id:
-        flash("削除するプリセットを選択してください。", "error")
+        flash("削除対象のプリセットを選択してください。", "error")
         return _redirect_to_mode(mode)
 
-    preset = IllustrationPreset.query.filter_by(
-        id=preset_id, user_id=current_user.id
-    ).first()
+    model = _preset_model_for_mode(mode)
+    preset = model.query.filter_by(id=preset_id, user_id=current_user.id).first()
     if not preset:
         flash("指定されたプリセットが見つかりません。", "error")
         return _redirect_to_mode(mode)
@@ -353,3 +400,4 @@ def delete_preset():
     db.session.commit()
     flash("プリセットを削除しました。", "info")
     return _redirect_to_mode(mode)
+

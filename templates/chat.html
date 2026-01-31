@@ -34,7 +34,7 @@
         <div class="d-flex align-items-center justify-content-between mb-3">
           <div>
             <h2 class="card-title mb-1">チャットセッション</h2>
-            <div class="small text-white-50">メニューからモードを選択して送信できます。</div>
+            <div class="small text-white-50">テキストと画像を添付して相談できます。</div>
           </div>
           <span class="badge badge-soft">セッションID: {{ current_session.id }}</span>
         </div>
@@ -73,118 +73,28 @@
 
         <form class="chat-input mt-3" id="chatForm" data-endpoint="{{ url_for('chat.send_message') }}">
           <input type="hidden" name="session_id" value="{{ current_session.id }}">
-          <input type="hidden" name="mode_id" id="chatModeInput" value="text_chat">
 
           <div class="chat-toolbar">
-            <div class="dropdown">
-              <button
-                class="btn btn-outline-light dropdown-toggle"
-                type="button"
-                id="chatModeMenu"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <i class="bi bi-sliders me-1"></i> <span id="chatModeLabel">テキストチャット</span>
-              </button>
-              <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="chatModeMenu">
-                {% for mode in chat_modes %}
-                <li>
-                  <button
-                    class="dropdown-item"
-                    type="button"
-                    data-mode-id="{{ mode.id }}"
-                    data-mode-label="{{ mode.label }}"
-                    data-mode-helper="{{ mode.helper }}"
-                  >
-                    <div class="fw-semibold">{{ mode.label }}</div>
-                    <small class="text-white-50">{{ mode.description }}</small>
-                  </button>
-                </li>
-                {% endfor %}
-              </ul>
+            <div class="d-flex flex-column w-100 gap-2">
+              <label class="form-label" for="chatImages">画像添付（任意）</label>
+              <input class="form-control" type="file" id="chatImages" name="images" accept="image/png, image/jpeg" multiple>
+              <div class="small text-white-50">テキストのみでも送信できます。</div>
             </div>
-            <div class="small text-white-50" id="chatModeHelper">テキストのみで送信します。</div>
           </div>
 
-          <div class="chat-input-body">
+          <div class="chat-input-body mt-3">
             <label class="form-label" for="chatMessage">メッセージ</label>
             <textarea
               class="form-control"
               id="chatMessage"
               name="message"
               rows="3"
-              placeholder="相談したい内容や指示を入力してください"
+              placeholder="相談内容や指示を入力してください"
             ></textarea>
           </div>
 
-          <div class="chat-extra d-none" data-mode-visible="session_edit">
-            <div class="alert alert-info border-0">
-              <i class="bi bi-image me-1"></i>
-              直近の生成画像を使って再編集します。
-              {% if last_image %}
-              <span class="text-white-50">（画像が検出されています）</span>
-              {% else %}
-              <span class="text-white-50">（まだ画像がありません）</span>
-              {% endif %}
-            </div>
-          </div>
-
-          <div class="chat-extra d-none" data-mode-visible="rough_with_instructions">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label" for="chatRoughImage">ラフ画像</label>
-                <input class="form-control" type="file" id="chatRoughImage" name="rough_image" accept="image/png, image/jpeg">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="chatColor">色の指示</label>
-                <textarea class="form-control" id="chatColor" name="color_instruction" rows="2" placeholder="例: 柔らかい夕焼けの色味"></textarea>
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="chatPose">ポーズ指示</label>
-                <textarea class="form-control" id="chatPose" name="pose_instruction" rows="2" placeholder="例: ジャンプしているポーズ"></textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="chat-extra d-none" data-mode-visible="reference_style_colorize">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label" for="chatReferenceImage">完成絵（参考）</label>
-                <input class="form-control" type="file" id="chatReferenceImage" name="reference_image" accept="image/png, image/jpeg">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="chatReferenceRough">ラフ画像</label>
-                <input class="form-control" type="file" id="chatReferenceRough" name="rough_image" accept="image/png, image/jpeg">
-              </div>
-            </div>
-          </div>
-
-          <div class="chat-extra d-none" data-mode-visible="inpaint_outpaint">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label" for="chatEditBase">編集元画像</label>
-                <input class="form-control" type="file" id="chatEditBase" name="edit_base_image" accept="image/png, image/jpeg">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="chatEditMask">マスク画像</label>
-                <input class="form-control" type="file" id="chatEditMask" name="edit_mask_image" accept="image/png, image/jpeg">
-              </div>
-              <div class="col-md-4">
-                <label class="form-label" for="chatEditMode">編集モード</label>
-                <select class="form-select" id="chatEditMode" name="edit_mode">
-                  <option value="inpaint">インペイント</option>
-                  <option value="outpaint">アウトペイント</option>
-                </select>
-              </div>
-              <div class="col-md-8">
-                <label class="form-label" for="chatEditInstruction">追加指示</label>
-                <textarea class="form-control" id="chatEditInstruction" name="edit_instruction" rows="2" placeholder="例: 背景に花を追加"></textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="chat-actions">
-            <button class="btn btn-primary" type="submit" id="chatSubmit"><i class="bi bi-send me-1"></i> 送信</button>
+          <div class="chat-actions mt-3">
+            <button class="btn btn-primary" type="submit" id="chatSubmit"><i class="bi bi-send me-1"></i> ??</button>
             <div class="text-white-50 small" id="chatStatus"></div>
           </div>
         </form>
