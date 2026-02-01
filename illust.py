@@ -32,16 +32,9 @@ def _env_bool(value: Optional[str]) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+
 @lru_cache(maxsize=1)
 def _client() -> genai.Client:
-    use_vertex = _env_bool(os.environ.get("GOOGLE_GENAI_USE_VERTEXAI"))
-    if use_vertex:
-        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        location = os.environ.get("GOOGLE_CLOUD_LOCATION") or os.environ.get("GOOGLE_CLOUD_REGION")
-        if not project or not location:
-            raise RuntimeError("Vertex AI requires GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.")
-        return genai.Client(vertexai=True, project=project, location=location)
-
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise MissingApiKeyError("API key is not set.")
@@ -301,66 +294,24 @@ def edit_image_with_mask(
     aspect_ratio: Optional[str] = None,
 ) -> GeneratedImage:
     """
-    マスク画像を用いてインペイント/アウトペイントを行う。
+    Apply inpaint/outpaint by sending base + mask as two images to Gemini API.
 
     Args:
-        prompt: 編集指示テキスト。
-        base_image: ベース画像。
-        mask_image: マスク画像（非ゼロが編集対象）。
-        edit_mode: "inpaint" または "outpaint"。
-        aspect_ratio: 出力のアスペクト比（指定がある場合のみ）。
+        prompt: Edit instructions.
+        base_image: Original image.
+        mask_image: Mask image (white = edit, black = keep).
+        edit_mode: "inpaint" or "outpaint" (used only in prompt).
+        aspect_ratio: Optional aspect ratio override.
     """
 
-    if edit_mode == "outpaint":
-        edit_mode_value = types.EditMode.EDIT_MODE_OUTPAINT
-    else:
-        edit_mode_value = types.EditMode.EDIT_MODE_INPAINT_INSERTION
-
-    raw_ref = types.RawReferenceImage(
-        reference_id=1,
-        reference_image=_pil_to_types_image(base_image),
+    mode_hint = "outpaint" if edit_mode == "outpaint" else "inpaint"
+    mask_hint = (
+        "The second image is a mask. White areas indicate regions to edit, "
+        "black areas must be preserved. Apply the edit instructions accordingly."
     )
-    mask_ref = types.MaskReferenceImage(
-        reference_id=2,
-        reference_image=_pil_to_types_image(mask_image),
-        config=types.MaskReferenceConfig(mask_mode="MASK_MODE_USER_PROVIDED"),
-    )
-
-    config_kwargs: dict[str, Any] = {
-        "edit_mode": edit_mode_value,
-        "number_of_images": 1,
-        "output_mime_type": "image/png",
-    }
-    if aspect_ratio:
-        config_kwargs["aspect_ratio"] = aspect_ratio
-
-    response = _client().models.edit_image(
-        model=DEFAULT_IMAGE_MODEL,
-        prompt=prompt,
-        reference_images=[raw_ref, mask_ref],
-        config=types.EditImageConfig(**config_kwargs),
-    )
-
-    if not response or not response.generated_images:
-        raise RuntimeError("APIレスポンスに画像データが含まれていません。")
-
-    chosen = None
-    for generated in response.generated_images:
-        if generated.image and generated.image.image_bytes:
-            chosen = generated
-            break
-
-    if not chosen or not chosen.image or not chosen.image.image_bytes:
-        raise RuntimeError("APIレスポンスに画像データが含まれていません。")
-
-    image_bytes = chosen.image.image_bytes
-    mime_type = chosen.image.mime_type or "image/png"
-    generated_image = Image.open(BytesIO(image_bytes))
-    generated_image.load()
-
-    return GeneratedImage(
-        image=generated_image,
-        raw_bytes=image_bytes,
-        mime_type=mime_type,
-        prompt=prompt,
+    combined_prompt = f"{prompt}\n\nMode: {mode_hint}\n{mask_hint}"
+    return generate_image_with_images(
+        prompt=combined_prompt,
+        images=[base_image, mask_image],
+        aspect_ratio=aspect_ratio,
     )
