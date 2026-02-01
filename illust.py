@@ -306,8 +306,8 @@ def edit_image_with_mask(
 
     mode_hint = "outpaint" if edit_mode == "outpaint" else "inpaint"
     mask_hint = (
-        "The second image is a mask. White areas indicate regions to edit, "
-        "black areas must be preserved. Apply the edit instructions accordingly."
+        "2枚目の画像はマスクです。白い部分を編集し、黒い部分は保持してください。"
+        "指示に従って編集内容を反映してください。"
     )
     combined_prompt = f"{prompt}\n\nMode: {mode_hint}\n{mask_hint}"
     return generate_image_with_images(
