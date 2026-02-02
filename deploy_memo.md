@@ -155,3 +155,23 @@ Cloud Run Job は **一度だけ作成**します。
 - `APP_DEBUG` は `APP_ENV=production` では無視されます。
 - TCP 接続が必要な場合は `DB_HOST` / `DB_PORT` を追加してください。
 - 明示的なソケットパスを使う場合は `DB_SOCKET` を指定できます。
+
+---
+
+## 9. 環境切替メモ（ローカル / ステージング / 本番）
+
+### ローカル（Dockerなしで起動）
+- `APP_ENV=development`
+- `DB_FORCE_SQLITE=true` を設定すると、DB_* があっても SQLite を使います。
+- 初回のみ `APP_AUTO_MIGRATE=true` を設定すると起動時にマイグレーションが走ります。
+
+### ステージング（Cloud Run + Cloud SQL）
+- `APP_ENV=staging`
+- `DATABASE_URL` または `DB_*` を設定（SQLiteは禁止）
+- 初期ユーザー作成が必要なら、一時的に `APP_AUTO_INIT_USER=true` をセットし、初回起動後に削除
+
+### 本番（Cloud Run + Cloud SQL）
+- `APP_ENV=production`
+- `DATABASE_URL` または `DB_*` を設定（SQLiteは禁止）
+- 初期ユーザーは Cloud Run Job で `flask --app app.py init-db` を一度だけ実行するのが安全
+

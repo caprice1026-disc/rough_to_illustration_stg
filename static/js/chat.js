@@ -1,46 +1,4 @@
-const initChatModeMenu = () => {
-  const modeInput = document.getElementById('chatModeInput');
-  const modeLabel = document.getElementById('chatModeLabel');
-  const modeHelper = document.getElementById('chatModeHelper');
-  const modeButtons = document.querySelectorAll('[data-mode-id]');
-
-  if (!modeInput || modeButtons.length === 0) return null;
-
-  const splitModes = (raw) =>
-    String(raw || '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-  const toggleVisibility = (modeId) => {
-    document.querySelectorAll('[data-mode-visible]').forEach((el) => {
-      const modes = splitModes(el.dataset.modeVisible);
-      const shouldShow = modes.includes(modeId);
-      el.classList.toggle('d-none', !shouldShow);
-    });
-  };
-
-  const applyMode = (modeId, label, helper) => {
-    modeInput.value = modeId;
-    if (modeLabel) modeLabel.textContent = label;
-    if (modeHelper) modeHelper.textContent = helper;
-    toggleVisibility(modeId);
-  };
-
-  modeButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const modeId = button.dataset.modeId;
-      const label = button.dataset.modeLabel || 'テキストチャット';
-      const helper = button.dataset.modeHelper || '';
-      applyMode(modeId, label, helper);
-    });
-  });
-
-  applyMode(modeInput.value, modeLabel?.textContent || 'テキストチャット', modeHelper?.textContent || '');
-  return { applyMode };
-};
-
-const buildMessageElement = (message) => {
+﻿const buildMessageElement = (message) => {
   const wrapper = document.createElement('div');
   wrapper.className = `chat-message ${message.role === 'user' ? 'is-user' : 'is-assistant'}`;
 
@@ -51,14 +9,8 @@ const buildMessageElement = (message) => {
   meta.className = 'chat-meta';
   const role = document.createElement('span');
   role.className = 'chat-role';
-  role.textContent = message.role === 'user' ? 'あなた' : 'アシスタント';
+  role.textContent = message.role === 'user' ? 'You' : 'Assistant';
   meta.appendChild(role);
-  if (message.mode_id) {
-    const mode = document.createElement('span');
-    mode.className = 'chat-mode';
-    mode.textContent = message.mode_id;
-    meta.appendChild(mode);
-  }
   bubble.appendChild(meta);
 
   if (message.text) {
@@ -76,7 +28,7 @@ const buildMessageElement = (message) => {
       card.className = 'chat-attachment';
       const img = document.createElement('img');
       img.src = attachment.url;
-      img.alt = '添付画像';
+      img.alt = 'attachment';
       card.appendChild(img);
       const label = document.createElement('div');
       label.className = 'chat-attachment-label';
@@ -91,50 +43,20 @@ const buildMessageElement = (message) => {
   return wrapper;
 };
 
-const buildUserAttachments = (form, modeId) => {
-  const attachments = [];
-  const addFile = (inputName, kind) => {
-    const input = form.querySelector(`input[name="${inputName}"]`);
-    if (!input || !input.files || input.files.length === 0) return;
-    const file = input.files[0];
-    attachments.push({ kind, url: URL.createObjectURL(file) });
-  };
-
-  if (modeId === 'rough_with_instructions') {
-    addFile('rough_image', 'rough');
-  } else if (modeId === 'reference_style_colorize') {
-    addFile('reference_image', 'reference');
-    addFile('rough_image', 'rough');
-  } else if (modeId === 'inpaint_outpaint') {
-    addFile('edit_base_image', 'base');
-    addFile('edit_mask_image', 'mask');
-  }
-
-  return attachments;
+const buildUserAttachments = (files) => {
+  if (!files || files.length === 0) return [];
+  return Array.from(files).map((file) => ({
+    kind: 'image',
+    url: URL.createObjectURL(file),
+  }));
 };
 
-const buildUserText = (form, modeId) => {
-  const message = form.querySelector('textarea[name="message"]')?.value || '';
-  if (modeId === 'rough_with_instructions') {
-    const color = form.querySelector('textarea[name="color_instruction"]')?.value || '';
-    const pose = form.querySelector('textarea[name="pose_instruction"]')?.value || '';
-    return `色: ${color}\nポーズ: ${pose}`.trim();
-  }
-  if (modeId === 'reference_style_colorize') {
-    return '完成絵参照→ラフ着色を依頼';
-  }
-  if (modeId === 'inpaint_outpaint') {
-    const editInstruction = form.querySelector('textarea[name="edit_instruction"]')?.value || '';
-    return editInstruction || 'マスク編集を依頼';
-  }
-  return message;
-};
-
-const initChatForm = (modeController) => {
+const initChatForm = () => {
   const form = document.getElementById('chatForm');
   const messages = document.getElementById('chatMessages');
   const submitButton = document.getElementById('chatSubmit');
   const status = document.getElementById('chatStatus');
+  const fileInput = document.getElementById('chatImages');
   if (!form || !messages || !submitButton) return;
 
   const endpoint = form.dataset.endpoint || '/chat/messages';
@@ -146,17 +68,21 @@ const initChatForm = (modeController) => {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
-    const modeId = formData.get('mode_id');
-    const messageText = buildUserText(form, modeId);
+    const messageText = formData.get('message') || '';
+    const files = fileInput ? fileInput.files : null;
+
+    if (!messageText && (!files || files.length === 0)) {
+      if (status) status.textContent = 'Please enter a message or attach images.';
+      return;
+    }
 
     submitButton.disabled = true;
-    if (status) status.textContent = '送信中...';
+    if (status) status.textContent = 'Sending...';
 
     const userMessage = {
       role: 'user',
-      mode_id: modeId,
       text: messageText,
-      attachments: buildUserAttachments(form, modeId),
+      attachments: buildUserAttachments(files),
     };
 
     const emptyState = messages.querySelector('.empty-chat');
@@ -172,32 +98,26 @@ const initChatForm = (modeController) => {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error || '送信に失敗しました。');
+        throw new Error(payload.error || 'Failed to send message.');
       }
       if (payload.assistant) {
         messages.appendChild(buildMessageElement(payload.assistant));
       }
       form.reset();
-      if (modeController && typeof modeController.applyMode === 'function') {
-        const currentLabel = document.getElementById('chatModeLabel')?.textContent || 'テキストチャット';
-        const currentHelper = document.getElementById('chatModeHelper')?.textContent || '';
-        modeController.applyMode(modeId, currentLabel, currentHelper);
-      }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '送信に失敗しました。';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send message.';
       if (status) status.textContent = errorMessage;
       if (userElement) userElement.remove();
     } finally {
       submitButton.disabled = false;
-      if (status && status.textContent === '送信中...') status.textContent = '';
+      if (status && status.textContent === 'Sending...') status.textContent = '';
       scrollToBottom();
     }
   });
 };
 
 const bootstrapChatPage = () => {
-  const modeController = initChatModeMenu();
-  initChatForm(modeController);
+  initChatForm();
 };
 
 document.addEventListener('DOMContentLoaded', bootstrapChatPage);

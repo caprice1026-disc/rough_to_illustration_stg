@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
@@ -13,7 +13,13 @@ from PIL import Image
 from werkzeug.datastructures import FileStorage
 
 from extensions import db
-from illust import edit_image_with_mask, generate_image, generate_image_with_contents, generate_text
+from illust import (
+    edit_image_with_mask,
+    generate_image,
+    generate_image_with_contents,
+    generate_multimodal_text,
+    generate_text,
+)
 from models import ChatAttachment, ChatMessage, ChatSession
 from services.generation_service import (
     GenerationError,
@@ -35,7 +41,7 @@ from services.prompt_builder import (
 
 @dataclass(frozen=True)
 class ChatMode:
-    """チャット画面で選択できるモード定義。"""
+    """Chat mode definition for the UI."""
 
     id: str
     label: str
@@ -45,45 +51,13 @@ class ChatMode:
 
 CHAT_MODE_TEXT = ChatMode(
     id="text_chat",
-    label="テキストチャット",
-    description="テキスト相談や質問を行う基本モードです。",
-    helper="テキストのみで送信します。",
-)
-
-CHAT_MODE_SESSION_EDIT = ChatMode(
-    id="session_edit",
-    label="前の結果を追加編集",
-    description="直近の生成画像にテキスト指示を加えて再生成します。",
-    helper="直近の画像が必要です。",
-)
-
-CHAT_MODE_ROUGH = ChatMode(
-    id="rough_with_instructions",
-    label="ラフ→仕上げ（色・ポーズ指示）",
-    description="ラフスケッチ1枚とテキスト指示で仕上げます。",
-    helper="ラフ画像と色・ポーズ指示を入力してください。",
-)
-
-CHAT_MODE_REFERENCE = ChatMode(
-    id="reference_style_colorize",
-    label="完成絵参照→ラフ着色（2枚）",
-    description="完成絵のタッチを参考にラフを仕上げます。",
-    helper="完成絵とラフ画像の2枚が必要です。",
-)
-
-CHAT_MODE_EDIT = ChatMode(
-    id="inpaint_outpaint",
-    label="インペイント/アウトペイント編集",
-    description="マスクで指定した領域を編集します。",
-    helper="ベース画像とマスク画像が必要です。",
+    label="Multimodal chat",
+    description="Send text with optional images.",
+    helper="Attach images or send text only.",
 )
 
 CHAT_MODES: list[ChatMode] = [
     CHAT_MODE_TEXT,
-    CHAT_MODE_SESSION_EDIT,
-    CHAT_MODE_ROUGH,
-    CHAT_MODE_REFERENCE,
-    CHAT_MODE_EDIT,
 ]
 
 
@@ -113,10 +87,10 @@ def _chat_image_local_dir() -> Path:
 
 def _chat_image_bucket() -> storage.Bucket:
     if _chat_image_storage_mode() != "gcs":
-        raise GenerationError("CHAT_IMAGE_STORAGE が gcs ではありません。")
+        raise GenerationError("CHAT_IMAGE_STORAGE must be gcs.")
     bucket_name = current_app.config.get("CHAT_IMAGE_BUCKET")
     if not bucket_name:
-        raise GenerationError("CHAT_IMAGE_BUCKET が設定されていません。")
+        raise GenerationError("CHAT_IMAGE_BUCKET is not set.")
     client = storage.Client()
     return client.bucket(bucket_name)
 
@@ -221,16 +195,16 @@ def fetch_recent_text_history(session: ChatSession, *, limit: int = 8) -> list[C
 
 def build_text_prompt(history: list[ChatMessage], user_text: str) -> str:
     lines = [
-        "あなたはイラスト制作の相談に乗るアシスタントです。",
-        "以下はユーザーとの会話履歴です。",
+        "You are a helpful assistant for illustration workflows.",
+        "Use the prior context if it helps.",
     ]
     for message in history:
-        role = "ユーザー" if message.role == "user" else "アシスタント"
+        role = "User" if message.role == "user" else "Assistant"
         if message.text:
             lines.append(f"{role}: {message.text}")
     lines.append("---")
-    lines.append(f"ユーザー: {user_text}")
-    lines.append("アシスタント: ")
+    lines.append(f"User: {user_text}")
+    lines.append("Assistant:")
     return "\n".join(lines)
 
 
@@ -239,6 +213,17 @@ def generate_text_reply(session: ChatSession, user_text: str) -> str:
     if history and history[-1].role == "user" and history[-1].text == user_text:
         history = history[:-1]
     prompt = build_text_prompt(history, user_text)
+    return generate_text(prompt)
+
+
+def generate_multimodal_reply(session: ChatSession, user_text: str, images: list[Image.Image]) -> str:
+    history = fetch_recent_text_history(session)
+    if history and history[-1].role == "user" and history[-1].text == user_text:
+        history = history[:-1]
+    prompt_text = user_text.strip() if user_text.strip() else "Please describe the images."
+    prompt = build_text_prompt(history, prompt_text)
+    if images:
+        return generate_multimodal_text(prompt, images)
     return generate_text(prompt)
 
 
@@ -257,11 +242,11 @@ def last_assistant_image(session: ChatSession) -> Optional[StoredImage]:
 def run_session_edit(session: ChatSession, user_text: str) -> StoredImage:
     stored = last_assistant_image(session)
     if not stored:
-        raise GenerationError("直近の生成画像が見つかりません。先に画像生成を行ってください。")
+        raise GenerationError("No prior image in this session.")
 
     raw_bytes = load_chat_image_bytes(stored.image_id)
     if raw_bytes is None:
-        raise GenerationError("前回の画像データが見つかりません。再度生成してください。")
+        raise GenerationError("The previous image could not be loaded.")
 
     image = Image.open(BytesIO(raw_bytes)).convert("RGB")
     prompt = build_chat_edit_prompt(user_text)
@@ -275,7 +260,7 @@ def run_rough_mode(
     color_instruction: str,
     pose_instruction: str,
 ) -> StoredImage:
-    rough_image = decode_uploaded_image_raw(rough_file, label="ラフ絵")
+    rough_image = decode_uploaded_image_raw(rough_file, label="rough image")
     prompt = build_prompt(color_instruction, pose_instruction)
     generated = generate_image(prompt=prompt, image=rough_image)
     return persist_chat_image(generated.raw_bytes, generated.mime_type)
@@ -286,13 +271,13 @@ def run_reference_mode(
     reference_file: Optional[FileStorage],
     rough_file: Optional[FileStorage],
 ) -> StoredImage:
-    reference_image = decode_uploaded_image_raw(reference_file, label="参考（完成）画像")
-    rough_image = decode_uploaded_image_raw(rough_file, label="ラフスケッチ")
+    reference_image = decode_uploaded_image_raw(reference_file, label="reference image")
+    rough_image = decode_uploaded_image_raw(rough_file, label="rough image")
     prompt = build_reference_style_colorize_prompt()
     contents = [
-        "これから2枚の画像を渡します。1枚目は編集対象のラフスケッチです。",
+        "Use the rough image as the base and the reference for style.",
         rough_image,
-        "次に2枚目を渡します。2枚目は画風・質感・陰影・彩度レンジの参照となる完成済みイラストです。",
+        "Apply the reference colors and style to the rough image.",
         reference_image,
         prompt,
     ]
@@ -307,13 +292,13 @@ def run_edit_mode(
     edit_mode: str,
     edit_instruction: str,
 ) -> StoredImage:
-    base_image = decode_uploaded_image_raw(base_file, label="編集元画像")
-    mask_image = decode_uploaded_image_raw(mask_file, label="マスク画像")
+    base_image = decode_uploaded_image_raw(base_file, label="base image")
+    mask_image = decode_uploaded_image_raw(mask_file, label="mask image")
     base_image = ensure_rgb(base_image)
     mask_image = normalize_mask_image(mask_image)
 
     if base_image.size != mask_image.size:
-        raise GenerationError("マスク画像のサイズがベース画像と一致しません。")
+        raise GenerationError("Mask size must match the base image.")
 
     normalized_mode = "outpaint" if edit_mode == "outpaint" else "inpaint"
     prompt = build_edit_prompt(edit_instruction, normalized_mode)

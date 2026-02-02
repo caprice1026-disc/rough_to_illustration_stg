@@ -481,6 +481,7 @@ def run_edit_generation(
     normalized_mode = "outpaint" if edit_mode == "outpaint" else "inpaint"
     prompt = build_edit_prompt(edit_instruction, normalized_mode)
 
+
     generated = edit_image_with_mask(
         prompt=prompt,
         base_image=base_image,

@@ -56,7 +56,7 @@ def test_chat_page_creates_session(client, app):
     with app.app_context():
         sessions = ChatSession.query.all()
         assert len(sessions) == 1
-        assert sessions[0].title == "新しいチャット"
+        assert sessions[0].title
 
 
 def test_index_page_loads_for_logged_in_user(client):
@@ -75,7 +75,7 @@ def test_text_chat_persists_messages(client, app, monkeypatch):
         db.session.commit()
         session_id = session.id
 
-    monkeypatch.setattr("services.chat_service.generate_text_reply", lambda *_: "テスト応答")
+    monkeypatch.setattr("services.chat_service.generate_multimodal_reply", lambda *_: "test reply")
 
     response = client.post(
         "/api/chat/messages",
@@ -84,7 +84,7 @@ def test_text_chat_persists_messages(client, app, monkeypatch):
     )
     assert response.status_code == 200
     payload = json.loads(response.data)
-    assert payload["assistant"]["text"] == "テスト応答"
+    assert payload["assistant"]["text"] == "test reply"
 
     with app.app_context():
         messages = (

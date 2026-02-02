@@ -26,11 +26,18 @@ class MissingApiKeyError(RuntimeError):
     """APIキーが設定されていない場合の例外。"""
 
 
+def _env_bool(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+
 @lru_cache(maxsize=1)
 def _client() -> genai.Client:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        raise MissingApiKeyError("APIキーが設定されていません。")
+        raise MissingApiKeyError("API key is not set.")
     return genai.Client(api_key=api_key)
 
 
@@ -50,6 +57,28 @@ def generate_text(prompt: str) -> str:
     response = _client().models.generate_content(
         model=DEFAULT_TEXT_MODEL,
         contents=[prompt],
+        config=types.GenerateContentConfig(response_modalities=["TEXT"]),
+    )
+
+    if getattr(response, "text", None):
+        return response.text
+
+    for part in getattr(response, "parts", []):
+        if getattr(part, "text", None):
+            return part.text
+
+    raise RuntimeError("APIレスポンスにテキストが含まれていません。")
+
+
+def generate_multimodal_text(prompt: str, images: list[Image.Image]) -> str:
+    """画像を含むマルチモーダル入力でテキスト返信を生成する。"""
+
+    contents: list[Any] = [prompt]
+    contents.extend(images)
+
+    response = _client().models.generate_content(
+        model=DEFAULT_TEXT_MODEL,
+        contents=contents,
         config=types.GenerateContentConfig(response_modalities=["TEXT"]),
     )
 
@@ -265,66 +294,24 @@ def edit_image_with_mask(
     aspect_ratio: Optional[str] = None,
 ) -> GeneratedImage:
     """
-    マスク画像を用いてインペイント/アウトペイントを行う。
+    Apply inpaint/outpaint by sending base + mask as two images to Gemini API.
 
     Args:
-        prompt: 編集指示テキスト。
-        base_image: ベース画像。
-        mask_image: マスク画像（非ゼロが編集対象）。
-        edit_mode: "inpaint" または "outpaint"。
-        aspect_ratio: 出力のアスペクト比（指定がある場合のみ）。
+        prompt: Edit instructions.
+        base_image: Original image.
+        mask_image: Mask image (white = edit, black = keep).
+        edit_mode: "inpaint" or "outpaint" (used only in prompt).
+        aspect_ratio: Optional aspect ratio override.
     """
 
-    if edit_mode == "outpaint":
-        edit_mode_value = types.EditMode.EDIT_MODE_OUTPAINT
-    else:
-        edit_mode_value = types.EditMode.EDIT_MODE_INPAINT_INSERTION
-
-    raw_ref = types.RawReferenceImage(
-        reference_id=1,
-        reference_image=_pil_to_types_image(base_image),
+    mode_hint = "outpaint" if edit_mode == "outpaint" else "inpaint"
+    mask_hint = (
+        "2枚目の画像はマスクです。白い部分を編集し、黒い部分は保持してください。"
+        "指示に従って編集内容を反映してください。"
     )
-    mask_ref = types.MaskReferenceImage(
-        reference_id=2,
-        reference_image=_pil_to_types_image(mask_image),
-        config=types.MaskReferenceConfig(mask_mode="MASK_MODE_USER_PROVIDED"),
-    )
-
-    config_kwargs: dict[str, Any] = {
-        "edit_mode": edit_mode_value,
-        "number_of_images": 1,
-        "output_mime_type": "image/png",
-    }
-    if aspect_ratio:
-        config_kwargs["aspect_ratio"] = aspect_ratio
-
-    response = _client().models.edit_image(
-        model=DEFAULT_IMAGE_MODEL,
-        prompt=prompt,
-        reference_images=[raw_ref, mask_ref],
-        config=types.EditImageConfig(**config_kwargs),
-    )
-
-    if not response or not response.generated_images:
-        raise RuntimeError("APIレスポンスに画像データが含まれていません。")
-
-    chosen = None
-    for generated in response.generated_images:
-        if generated.image and generated.image.image_bytes:
-            chosen = generated
-            break
-
-    if not chosen or not chosen.image or not chosen.image.image_bytes:
-        raise RuntimeError("APIレスポンスに画像データが含まれていません。")
-
-    image_bytes = chosen.image.image_bytes
-    mime_type = chosen.image.mime_type or "image/png"
-    generated_image = Image.open(BytesIO(image_bytes))
-    generated_image.load()
-
-    return GeneratedImage(
-        image=generated_image,
-        raw_bytes=image_bytes,
-        mime_type=mime_type,
-        prompt=prompt,
+    combined_prompt = f"{prompt}\n\nMode: {mode_hint}\n{mask_hint}"
+    return generate_image_with_images(
+        prompt=combined_prompt,
+        images=[base_image, mask_image],
+        aspect_ratio=aspect_ratio,
     )

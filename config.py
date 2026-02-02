@@ -23,17 +23,21 @@ def _env_bool(value: str | None) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_env(app_env: str) -> str:
+    return app_env.strip().lower()
+
+
+def _is_production_like(app_env: str) -> bool:
+    return _normalize_env(app_env) in {"production", "staging"}
+
+
 def _resolve_debug(app_env: str) -> bool:
-    if app_env.strip().lower() == "production":
+    if _is_production_like(app_env):
         return False
     raw_debug = os.environ.get("APP_DEBUG") or os.environ.get("FLASK_DEBUG")
     if raw_debug is None:
         return True
     return _env_bool(raw_debug)
-
-
-def _is_production(app_env: str) -> bool:
-    return app_env.strip().lower() == "production"
 
 
 def _normalize_database_url(url: str) -> str:
@@ -77,19 +81,22 @@ def _build_mysql_url_from_env() -> str | None:
 
 
 def _resolve_database_uri(app_env: str) -> str:
+    if not _is_production_like(app_env) and _env_bool(_env("DB_FORCE_SQLITE")):
+        return "sqlite:///app.db"
+
     database_url = _env("DATABASE_URL")
     if database_url:
         return _normalize_database_url(database_url)
     mysql_url = _build_mysql_url_from_env()
     if mysql_url:
         return mysql_url
-    if _is_production(app_env):
+    if _is_production_like(app_env):
         return ""
     return "sqlite:///app.db"
 
 
 def _resolve_engine_options(app_env: str) -> dict[str, object]:
-    if not _is_production(app_env):
+    if not _is_production_like(app_env):
         return {}
 
     return {
@@ -105,7 +112,7 @@ def _resolve_chat_image_storage(app_env: str) -> str:
     explicit = _env("CHAT_IMAGE_STORAGE")
     if explicit:
         return explicit.lower()
-    if _is_production(app_env):
+    if _is_production_like(app_env):
         return "gcs"
     return "local"
 
@@ -124,14 +131,16 @@ class Config:
     MAX_IMAGE_HEIGHT = int(os.environ.get("MAX_IMAGE_HEIGHT", "8192"))
     MAX_IMAGE_PIXELS = int(os.environ.get("MAX_IMAGE_PIXELS", str(64 * 1024 * 1024)))
     DEBUG = _resolve_debug(APP_ENV)
-    SESSION_COOKIE_SECURE = _is_production(APP_ENV)
-    SESSION_COOKIE_HTTPONLY = _is_production(APP_ENV)
-    PREFERRED_URL_SCHEME = "https" if _is_production(APP_ENV) else "http"
+    SESSION_COOKIE_SECURE = _is_production_like(APP_ENV)
+    SESSION_COOKIE_HTTPONLY = _is_production_like(APP_ENV)
+    PREFERRED_URL_SCHEME = "https" if _is_production_like(APP_ENV) else "http"
     SESSION_COOKIE_SAMESITE = "Lax"
     WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]
     INITIAL_USER_USERNAME = os.environ.get("INITIAL_USER_USERNAME")
     INITIAL_USER_EMAIL = os.environ.get("INITIAL_USER_EMAIL")
     INITIAL_USER_PASSWORD = os.environ.get("INITIAL_USER_PASSWORD")
+    APP_AUTO_MIGRATE = _env_bool(os.environ.get("APP_AUTO_MIGRATE"))
+    APP_AUTO_INIT_USER = _env_bool(os.environ.get("APP_AUTO_INIT_USER"))
     CHAT_IMAGE_BUCKET = os.environ.get("CHAT_IMAGE_BUCKET")
     CHAT_IMAGE_STORAGE = _resolve_chat_image_storage(APP_ENV)
     CHAT_IMAGE_DIR = os.environ.get("CHAT_IMAGE_DIR", "chat_images")

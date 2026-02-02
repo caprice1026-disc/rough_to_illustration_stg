@@ -5,6 +5,7 @@ from flask.cli import with_appcontext
 from flask_migrate import upgrade
 from flask_wtf.csrf import CSRFError
 import click
+from pathlib import Path
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from sqlalchemy import inspect
@@ -27,6 +28,7 @@ def create_app(config_object: object | None = None) -> Flask:
         else:
             app.config.from_object(config_object)
 
+    ensure_instance_path(app)
     apply_proxy_fix(app)
     ensure_secret_key(app)
     ensure_database_url(app)
@@ -40,13 +42,15 @@ def create_app(config_object: object | None = None) -> Flask:
     register_cli(app)
 
     register_blueprints(app)
+    maybe_auto_migrate(app)
+    maybe_auto_init_user(app)
     return app
 
 
 def apply_proxy_fix(app: Flask) -> None:
     """リバースプロキシ配下で X-Forwarded-* ヘッダーを反映する。"""
 
-    if app.config.get("APP_ENV", "").strip().lower() != "production":
+    if app.config.get("APP_ENV", "").strip().lower() not in {"production", "staging"}:
         return
 
     app.wsgi_app = ProxyFix(
@@ -68,11 +72,17 @@ def ensure_secret_key(app: Flask) -> None:
         raise RuntimeError("SECRET_KEY is not set. Set it in .env before starting.")
 
 
+def ensure_instance_path(app: Flask) -> None:
+    """Ensure the Flask instance path exists for SQLite/GCS local storage."""
+
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+
+
 def ensure_database_url(app: Flask) -> None:
     """Ensure a production database is configured."""
 
     app_env = (app.config.get("APP_ENV") or "").strip().lower()
-    if app_env != "production":
+    if app_env not in {"production", "staging"}:
         return
 
     database_url = app.config.get("SQLALCHEMY_DATABASE_URI")
@@ -115,6 +125,28 @@ def ensure_initial_user(app: Flask) -> None:
     db.session.add(user)
     db.session.commit()
     app.logger.info("イニシャルユーザーを作成しました。")
+
+
+def maybe_auto_migrate(app: Flask) -> None:
+    """Optionally run migrations at startup in non-production environments."""
+
+    if not app.config.get("APP_AUTO_MIGRATE"):
+        return
+    if (app.config.get("APP_ENV") or "").strip().lower() in {"production", "staging"}:
+        app.logger.info("APP_AUTO_MIGRATE is ignored in production/staging.")
+        return
+    with app.app_context():
+        upgrade()
+        app.logger.info("Auto migration completed.")
+
+
+def maybe_auto_init_user(app: Flask) -> None:
+    """Optionally create the initial user at startup."""
+
+    if not app.config.get("APP_AUTO_INIT_USER"):
+        return
+    with app.app_context():
+        ensure_initial_user(app)
 
 
 def register_blueprints(app: Flask) -> None:

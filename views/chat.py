@@ -12,18 +12,14 @@ from services.chat_service import (
     CHAT_MODES,
     add_message,
     create_session,
-    generate_text_reply,
+    generate_multimodal_reply,
     last_assistant_image,
     load_chat_image_bytes,
-    run_edit_mode,
-    run_reference_mode,
-    run_rough_mode,
-    run_session_edit,
     save_uploaded_image,
     touch_session,
     update_session_title,
 )
-from services.generation_service import GenerationError
+from services.generation_service import GenerationError, decode_uploaded_image_raw, ensure_rgb
 
 
 chat_bp = Blueprint("chat", __name__)
@@ -119,106 +115,37 @@ def send_message():
         return jsonify({"error": "セッションが見つかりません。"}), 400
 
     session = _session_or_404(session_id)
-    mode_id = request.form.get("mode_id") or "text_chat"
     user_message = (request.form.get("message") or "").strip()
+    files = request.files.getlist("images")
+
+    if not user_message and not files:
+        return jsonify({"error": "メッセージまたは画像を入力してください。"}), 400
 
     try:
         attachments = []
-        if mode_id == "rough_with_instructions":
-            rough_file = request.files.get("rough_image")
-            color_instruction = request.form.get("color_instruction", "")
-            pose_instruction = request.form.get("pose_instruction", "")
-            if not rough_file:
-                raise GenerationError("ラフ画像を選択してください。")
-            attachments.append(("rough", save_uploaded_image(rough_file, label="ラフ画像")))
-            user_text = f"色: {color_instruction}\nポーズ: {pose_instruction}".strip()
-            add_message(session=session, role="user", text=user_text, mode_id=mode_id, attachments=attachments)
-            update_session_title(session, user_text)
-            result = run_rough_mode(
-                rough_file=rough_file,
-                color_instruction=color_instruction,
-                pose_instruction=pose_instruction,
-            )
-            assistant_message = add_message(
-                session=session,
-                role="assistant",
-                text="イラスト生成が完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "reference_style_colorize":
-            reference_file = request.files.get("reference_image")
-            rough_file = request.files.get("rough_image")
-            if not reference_file or not rough_file:
-                raise GenerationError("完成絵とラフ画像の両方を選択してください。")
-            attachments.append(("reference", save_uploaded_image(reference_file, label="完成絵")))
-            attachments.append(("rough", save_uploaded_image(rough_file, label="ラフ画像")))
-            add_message(
-                session=session,
-                role="user",
-                text="完成絵参照→ラフ着色を依頼",
-                mode_id=mode_id,
-                attachments=attachments,
-            )
-            update_session_title(session, "完成絵参照→ラフ着色を依頼")
-            result = run_reference_mode(reference_file=reference_file, rough_file=rough_file)
-            assistant_message = add_message(
-                session=session,
-                role="assistant",
-                text="参照を反映した仕上げが完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "inpaint_outpaint":
-            base_file = request.files.get("edit_base_image")
-            mask_file = request.files.get("edit_mask_image")
-            edit_mode = request.form.get("edit_mode", "inpaint")
-            edit_instruction = request.form.get("edit_instruction", "")
-            if not base_file or not mask_file:
-                raise GenerationError("編集元画像とマスク画像を選択してください。")
-            attachments.append(("base", save_uploaded_image(base_file, label="編集元画像")))
-            attachments.append(("mask", save_uploaded_image(mask_file, label="マスク画像")))
-            add_message(
-                session=session,
-                role="user",
-                text=edit_instruction or "マスク編集を依頼",
-                mode_id=mode_id,
-                attachments=attachments,
-            )
-            update_session_title(session, edit_instruction or "マスク編集を依頼")
-            result = run_edit_mode(
-                base_file=base_file,
-                mask_file=mask_file,
-                edit_mode=edit_mode,
-                edit_instruction=edit_instruction,
-            )
-            assistant_message = add_message(
-                session=session,
-                role="assistant",
-                text="編集が完了しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        elif mode_id == "session_edit":
-            if not user_message:
-                raise GenerationError("追加編集の指示を入力してください。")
-            add_message(session=session, role="user", text=user_message, mode_id=mode_id)
-            update_session_title(session, user_message)
-            result = run_session_edit(session, user_message)
-            assistant_message = add_message(
-                session=session,
-                role="assistant",
-                text="直近の画像をベースに再生成しました。",
-                mode_id=mode_id,
-                attachments=[("result", result)],
-            )
-        else:
-            if not user_message:
-                raise GenerationError("メッセージを入力してください。")
-            add_message(session=session, role="user", text=user_message, mode_id=mode_id)
-            update_session_title(session, user_message)
-            reply = generate_text_reply(session, user_message)
-            assistant_message = add_message(session=session, role="assistant", text=reply, mode_id=mode_id)
+        images = []
+        for index, file in enumerate(files):
+            stored = save_uploaded_image(file, label=f"添付画像{index + 1}")
+            attachments.append(("image", stored))
+            image = decode_uploaded_image_raw(file, label="添付画像")
+            images.append(ensure_rgb(image))
+
+        add_message(
+            session=session,
+            role="user",
+            text=user_message,
+            mode_id="text_chat",
+            attachments=attachments,
+        )
+        update_session_title(session, user_message)
+
+        reply = generate_multimodal_reply(session, user_message, images)
+        assistant_message = add_message(
+            session=session,
+            role="assistant",
+            text=reply,
+            mode_id="text_chat",
+        )
 
         touch_session(session)
     except MissingApiKeyError:
@@ -228,8 +155,6 @@ def send_message():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": "チャット処理に失敗しました。"}), 500
 
-    return jsonify(
-        {
-            "assistant": _serialize_message(assistant_message),
-        }
-    )
+    return jsonify({"assistant": _serialize_message(assistant_message)})
+
+

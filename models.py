@@ -17,8 +17,18 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
-    presets = db.relationship(
-        "IllustrationPreset",
+    rough_presets = db.relationship(
+        "RoughPreset",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    reference_presets = db.relationship(
+        "ReferencePreset",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    edit_presets = db.relationship(
+        "EditPreset",
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -49,10 +59,10 @@ class User(db.Model, UserMixin):
         return self.username == username and self.email == email
 
 
-class IllustrationPreset(db.Model):
-    """ユーザーに紐づく色・ポーズのプリセット。"""
+class RoughPreset(db.Model):
+    """ラフ→仕上げモードのプリセット。"""
 
-    __tablename__ = "illustration_presets"
+    __tablename__ = "rough_presets"
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
@@ -61,7 +71,36 @@ class IllustrationPreset(db.Model):
     pose_instruction = db.Column(db.String(1000), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
-    user = db.relationship("User", back_populates="presets")
+    user = db.relationship("User", back_populates="rough_presets")
+
+
+class ReferencePreset(db.Model):
+    """完成絵参照→ラフ着色モードのプリセット。"""
+
+    __tablename__ = "reference_presets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+    reference_instruction = db.Column(db.String(1000), nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    user = db.relationship("User", back_populates="reference_presets")
+
+
+class EditPreset(db.Model):
+    """インペイント/アウトペイントモードのプリセット。"""
+
+    __tablename__ = "edit_presets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+    edit_instruction = db.Column(db.String(1000), nullable=False)
+    edit_mode = db.Column(db.String(20), nullable=False, server_default="inpaint")
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    user = db.relationship("User", back_populates="edit_presets")
 
 
 class ChatSession(db.Model):
