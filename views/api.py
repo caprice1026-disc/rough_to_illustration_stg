@@ -28,7 +28,6 @@ from services.modes import (
     ALL_MODES,
     MODE_INPAINT_OUTPAINT,
     MODE_REFERENCE_STYLE_COLORIZE,
-    MODE_ROUGH_WITH_INSTRUCTIONS,
     normalize_mode_id,
 )
 

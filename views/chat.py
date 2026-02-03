@@ -152,7 +152,7 @@ def send_message():
         return jsonify({"error": "APIキーが設定されていません。"}), 400
     except GenerationError as exc:
         return jsonify({"error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return jsonify({"error": "チャット処理に失敗しました。"}), 500
 
     return jsonify({"assistant": _serialize_message(assistant_message)})
