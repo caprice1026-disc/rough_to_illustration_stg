@@ -69,7 +69,7 @@ def test_generation_flow_creates_asset(client, monkeypatch):
     def fake_generate_image(*args, **kwargs):
         return GeneratedImage(image=image, raw_bytes=raw_bytes, mime_type="image/png", prompt="test")
 
-    monkeypatch.setattr("illust.generate_image", fake_generate_image)
+    monkeypatch.setattr("services.generation_service.generate_image", fake_generate_image)
 
     csrf_token = get_csrf_token(client)
     response = client.post(
