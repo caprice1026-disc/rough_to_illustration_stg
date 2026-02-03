@@ -1,10 +1,14 @@
 ﻿from __future__ import annotations
 
-from flask_sqlalchemy import SQLAlchemy
+from typing import Optional
+
+from flask import current_app
+from flask_login import UserMixin
 from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Integer,
     JSON,
     ForeignKey,
     Index,
@@ -17,14 +21,17 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import relationship
+from werkzeug.security import check_password_hash, generate_password_hash
 
-db = SQLAlchemy()
+from extensions import db, login_manager
+
+BIGINT = BigInteger().with_variant(Integer, "sqlite")
 
 
-class User(db.Model):
+class User(db.Model, UserMixin):
     __tablename__ = "users"
 
-    id = db.Column(BigInteger, primary_key=True)
+    id = db.Column(BIGINT, primary_key=True)
     username = db.Column(String(80), nullable=False, unique=True)
     email = db.Column(String(255), nullable=False, unique=True)
 
@@ -41,11 +48,32 @@ class User(db.Model):
 
     presets = relationship("Preset", back_populates="user", cascade="all, delete-orphan")
     generations = relationship("Generation", back_populates="user", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'user')", name="ck_users_role"),
         Index("ix_users_created_at", "created_at"),
     )
+
+    def set_password(self, raw_password: str) -> None:
+        """平文パスワードをハッシュ化して保存する。"""
+
+        self.password_hash = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        """入力パスワードと保存済みハッシュを照合する。"""
+
+        return check_password_hash(self.password_hash, raw_password)
+
+    @property
+    def is_initial_user(self) -> bool:
+        """初期ユーザーかどうかを判定する。"""
+
+        username = current_app.config.get("INITIAL_USER_USERNAME")
+        email = current_app.config.get("INITIAL_USER_EMAIL")
+        if not username or not email:
+            return False
+        return self.username == username and self.email == email
 
 
 class Preset(db.Model):
@@ -55,8 +83,8 @@ class Preset(db.Model):
     """
     __tablename__ = "presets"
 
-    id = db.Column(BigInteger, primary_key=True)
-    user_id = db.Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    id = db.Column(BIGINT, primary_key=True)
+    user_id = db.Column(BIGINT, ForeignKey("users.id"), nullable=False)
 
     # 例: rough_with_instructions / reference_style_colorize / inpaint_outpaint
     mode = db.Column(String(40), nullable=False)
@@ -91,8 +119,8 @@ class Generation(db.Model):
     """
     __tablename__ = "generations"
 
-    id = db.Column(BigInteger, primary_key=True)
-    user_id = db.Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    id = db.Column(BIGINT, primary_key=True)
+    user_id = db.Column(BIGINT, ForeignKey("users.id"), nullable=False)
 
     mode = db.Column(String(40), nullable=False)
 
@@ -111,7 +139,7 @@ class Generation(db.Model):
     status = db.Column(String(16), nullable=False, default="queued")
     started_at = db.Column(DateTime, nullable=True)
     finished_at = db.Column(DateTime, nullable=True)
-    duration_ms = db.Column(BigInteger, nullable=True)
+    duration_ms = db.Column(BIGINT, nullable=True)
 
     # プロンプトは保存しない要件なので、ここには持たない
     # エラーは残す
@@ -146,8 +174,8 @@ class GenerationAsset(db.Model):
     """
     __tablename__ = "generation_assets"
 
-    id = db.Column(BigInteger, primary_key=True)
-    generation_id = db.Column(BigInteger, ForeignKey("generations.id"), nullable=False)
+    id = db.Column(BIGINT, primary_key=True)
+    generation_id = db.Column(BIGINT, ForeignKey("generations.id"), nullable=False)
 
     # local / gcs
     storage_backend = db.Column(String(16), nullable=False, default="gcs")
@@ -157,9 +185,9 @@ class GenerationAsset(db.Model):
     object_name = db.Column(String(1024), nullable=True)
 
     mime_type = db.Column(String(64), nullable=False, default="image/png")
-    byte_size = db.Column(BigInteger, nullable=True)
-    width = db.Column(BigInteger, nullable=True)
-    height = db.Column(BigInteger, nullable=True)
+    byte_size = db.Column(BIGINT, nullable=True)
+    width = db.Column(BIGINT, nullable=True)
+    height = db.Column(BIGINT, nullable=True)
     sha256 = db.Column(String(64), nullable=True)
 
     # 将来の削除に備えたソフトデリート
@@ -178,3 +206,89 @@ class GenerationAsset(db.Model):
         Index("ix_generation_assets_generation_id", "generation_id"),
         Index("ix_generation_assets_sha256", "sha256"),
     )
+
+
+class ChatSession(db.Model):
+    """チャットセッションを表すモデル。"""
+
+    __tablename__ = "chat_sessions"
+
+    id = db.Column(BIGINT, primary_key=True)
+    user_id = db.Column(BIGINT, ForeignKey("users.id"), nullable=False)
+    title = db.Column(String(120), nullable=False)
+    created_at = db.Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = db.Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="chat_sessions")
+    messages = relationship(
+        "ChatMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.created_at",
+    )
+
+    __table_args__ = (
+        Index("ix_chat_sessions_user_updated_at", "user_id", "updated_at"),
+    )
+
+
+class ChatMessage(db.Model):
+    """チャット内のメッセージを表すモデル。"""
+
+    __tablename__ = "chat_messages"
+
+    id = db.Column(BIGINT, primary_key=True)
+    session_id = db.Column(BIGINT, ForeignKey("chat_sessions.id"), nullable=False)
+    role = db.Column(String(20), nullable=False)
+    text = db.Column(Text, nullable=True)
+    mode_id = db.Column(String(80), nullable=True)
+    created_at = db.Column(DateTime, nullable=False, server_default=func.now())
+
+    session = relationship("ChatSession", back_populates="messages")
+    attachments = relationship("ChatAttachment", back_populates="message", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user','assistant','system')", name="ck_chat_messages_role"),
+        Index("ix_chat_messages_session_created_at", "session_id", "created_at"),
+    )
+
+
+class ChatAttachment(db.Model):
+    """チャットメッセージに紐づく画像ファイル。"""
+
+    __tablename__ = "chat_attachments"
+
+    id = db.Column(BIGINT, primary_key=True)
+    message_id = db.Column(BIGINT, ForeignKey("chat_messages.id"), nullable=False)
+    kind = db.Column(String(40), nullable=False, default="image")
+
+    storage_backend = db.Column(String(16), nullable=False, default="gcs")
+    bucket = db.Column(String(255), nullable=True)
+    object_name = db.Column(String(1024), nullable=True)
+
+    mime_type = db.Column(String(64), nullable=False, default="image/png")
+    byte_size = db.Column(BIGINT, nullable=True)
+    width = db.Column(BIGINT, nullable=True)
+    height = db.Column(BIGINT, nullable=True)
+    sha256 = db.Column(String(64), nullable=True)
+    created_at = db.Column(DateTime, nullable=False, server_default=func.now())
+
+    message = relationship("ChatMessage", back_populates="attachments")
+
+    __table_args__ = (
+        CheckConstraint("storage_backend IN ('local','gcs')", name="ck_chat_attachments_storage"),
+        CheckConstraint(
+            "(storage_backend != 'gcs') OR (bucket IS NOT NULL AND object_name IS NOT NULL)",
+            name="ck_chat_attachments_gcs_required_fields",
+        ),
+        Index("ix_chat_attachments_message_id", "message_id"),
+    )
+
+
+@login_manager.user_loader
+def load_user(user_id: str) -> Optional[User]:
+    """ログインセッションからユーザーを復元する。"""
+
+    if not user_id:
+        return None
+    return User.query.get(int(user_id))

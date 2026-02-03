@@ -11,6 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
+BIGINT = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
+
 # Alembic 用の識別子
 revision = "20260203_01_initial_schema"
 down_revision = None
@@ -22,7 +24,7 @@ def upgrade() -> None:
     """初期スキーマを作成する。"""
     op.create_table(
         "users",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column("id", BIGINT, primary_key=True),
         sa.Column("username", sa.String(length=80), nullable=False, unique=True),
         sa.Column("email", sa.String(length=255), nullable=False, unique=True),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
@@ -37,8 +39,8 @@ def upgrade() -> None:
 
     op.create_table(
         "presets",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("id", BIGINT, primary_key=True),
+        sa.Column("user_id", BIGINT, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("mode", sa.String(length=40), nullable=False),
         sa.Column("name", sa.String(length=80), nullable=False),
         sa.Column(
@@ -59,8 +61,8 @@ def upgrade() -> None:
 
     op.create_table(
         "generations",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("user_id", sa.BigInteger(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("id", BIGINT, primary_key=True),
+        sa.Column("user_id", BIGINT, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("mode", sa.String(length=40), nullable=False),
         sa.Column("aspect_ratio", sa.String(length=16), nullable=True),
         sa.Column("resolution", sa.String(length=16), nullable=True),
@@ -70,7 +72,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("started_at", sa.DateTime(), nullable=True),
         sa.Column("finished_at", sa.DateTime(), nullable=True),
-        sa.Column("duration_ms", sa.BigInteger(), nullable=True),
+        sa.Column("duration_ms", BIGINT, nullable=True),
         sa.Column("error_code", sa.String(length=40), nullable=True),
         sa.Column("error_message", sa.String(length=255), nullable=True),
         sa.Column("error_detail", sa.Text(), nullable=True),
@@ -101,15 +103,15 @@ def upgrade() -> None:
 
     op.create_table(
         "generation_assets",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("generation_id", sa.BigInteger(), sa.ForeignKey("generations.id"), nullable=False),
+        sa.Column("id", BIGINT, primary_key=True),
+        sa.Column("generation_id", BIGINT, sa.ForeignKey("generations.id"), nullable=False),
         sa.Column("storage_backend", sa.String(length=16), nullable=False),
         sa.Column("bucket", sa.String(length=255), nullable=True),
         sa.Column("object_name", sa.String(length=1024), nullable=True),
         sa.Column("mime_type", sa.String(length=64), nullable=False),
-        sa.Column("byte_size", sa.BigInteger(), nullable=True),
-        sa.Column("width", sa.BigInteger(), nullable=True),
-        sa.Column("height", sa.BigInteger(), nullable=True),
+        sa.Column("byte_size", BIGINT, nullable=True),
+        sa.Column("width", BIGINT, nullable=True),
+        sa.Column("height", BIGINT, nullable=True),
         sa.Column("sha256", sa.String(length=64), nullable=True),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
