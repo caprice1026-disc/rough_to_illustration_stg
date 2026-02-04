@@ -9,6 +9,7 @@
   currentView: 'generate',
   lastResult: null,
   csrfToken: null,
+  adminUsers: [],
 };
 
 const elements = {};
@@ -58,6 +59,8 @@ const cacheElements = () => {
   elements.signupUsername = document.getElementById('signupUsername');
   elements.signupEmail = document.getElementById('signupEmail');
   elements.signupPassword = document.getElementById('signupPassword');
+  elements.adminUserTableBody = document.getElementById('adminUserTableBody');
+  elements.adminRefreshButton = document.getElementById('adminRefreshButton');
 };
 
 const showStatus = (message, type = 'info') => {
@@ -156,6 +159,7 @@ const setLoggedOut = () => {
   state.currentSessionId = null;
   state.lastResult = null;
   state.csrfToken = null;
+  state.adminUsers = [];
   clearStatus();
   renderLogin();
 };
@@ -178,9 +182,12 @@ const renderApp = () => {
   if (elements.navViews) elements.navViews.classList.remove('d-none');
   if (elements.logoutButton) elements.logoutButton.classList.remove('d-none');
   if (elements.adminView) {
-    elements.adminView.classList.toggle('d-none', !state.user?.is_initial_user);
+    elements.adminView.classList.toggle('d-none', !state.user?.is_admin);
   }
   setView(state.currentView);
+  if (state.user?.is_admin) {
+    loadAdminUsers();
+  }
 };
 
 const setView = (viewName) => {
@@ -468,6 +475,58 @@ const renderChatMessages = (messages) => {
   elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 };
 
+const renderAdminUsers = () => {
+  if (!elements.adminUserTableBody) return;
+  elements.adminUserTableBody.innerHTML = '';
+  if (!state.adminUsers || state.adminUsers.length === 0) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td colspan="6" class="text-center text-white-50">ユーザーがいません。</td>';
+    elements.adminUserTableBody.appendChild(row);
+    return;
+  }
+
+  state.adminUsers.forEach((user) => {
+    const row = document.createElement('tr');
+    const activeLabel = user.is_active ? '有効' : '無効';
+    const activeClass = user.is_active ? 'badge bg-success' : 'badge bg-secondary';
+    const isSelf = state.user && user.id === state.user.id;
+
+    row.innerHTML = `
+      <td>
+        <div class="fw-semibold">${user.username}</div>
+        ${user.is_initial_user ? '<div class="small text-white-50">初期ユーザー</div>' : ''}
+      </td>
+      <td>${user.email}</td>
+      <td>${user.role}</td>
+      <td><span class="${activeClass}">${activeLabel}</span></td>
+      <td>${user.last_login_at || '-'}</td>
+      <td>
+        <div class="d-flex flex-column gap-2">
+          <button class="btn btn-sm btn-outline-light" data-action="toggle" data-user-id="${user.id}" ${isSelf ? 'disabled' : ''}>
+            ${user.is_active ? '無効化' : '有効化'}
+          </button>
+          <div class="input-group input-group-sm">
+            <input type="password" class="form-control" placeholder="新しいPW" data-password-input="${user.id}">
+            <button class="btn btn-outline-light" type="button" data-action="reset" data-user-id="${user.id}">再設定</button>
+          </div>
+        </div>
+      </td>
+    `;
+    elements.adminUserTableBody.appendChild(row);
+  });
+};
+
+const loadAdminUsers = async () => {
+  if (!state.user?.is_admin) return;
+  try {
+    const payload = await apiFetch('/api/admin/users');
+    state.adminUsers = payload.users || [];
+    renderAdminUsers();
+  } catch (error) {
+    showStatus(error.message || 'ユーザー一覧の取得に失敗しました。', 'danger');
+  }
+};
+
 const loadPresets = async (modeId) => {
   const payload = await apiFetch(`/api/presets?mode=${encodeURIComponent(modeId)}`);
   state.presets = payload.presets || [];
@@ -597,8 +656,8 @@ const handlePresetDelete = async () => {
 
 const handleSignup = async (event) => {
   event.preventDefault();
-  if (!state.user?.is_initial_user) {
-    showStatus('初期ユーザーのみが新規登録できます。', 'warning');
+  if (!state.user?.is_admin) {
+    showStatus('管理者のみが新規登録できます。', 'warning');
     return;
   }
 
@@ -614,12 +673,13 @@ const handleSignup = async (event) => {
   }
 
   try {
-    await apiFetch('/api/auth/signup', {
+    await apiFetch('/api/admin/users', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     showStatus('ユーザーを作成しました。', 'success');
     if (elements.signupForm) elements.signupForm.reset();
+    await loadAdminUsers();
   } catch (error) {
     showStatus(error.message || 'ユーザー作成に失敗しました。', 'danger');
   }
@@ -726,6 +786,53 @@ const bindEvents = () => {
 
   if (elements.chatForm) elements.chatForm.addEventListener('submit', handleChatSubmit);
   if (elements.signupForm) elements.signupForm.addEventListener('submit', handleSignup);
+  if (elements.adminRefreshButton) {
+    elements.adminRefreshButton.addEventListener('click', loadAdminUsers);
+  }
+
+  if (elements.adminUserTableBody) {
+    elements.adminUserTableBody.addEventListener('click', async (event) => {
+      const target = event.target.closest('button[data-action]');
+      if (!target) return;
+      const userId = Number(target.dataset.userId);
+      if (!userId) return;
+      const action = target.dataset.action;
+
+      if (action === 'toggle') {
+        try {
+          const user = state.adminUsers.find((item) => item.id === userId);
+          const nextActive = user ? !user.is_active : true;
+          await apiFetch(`/api/admin/users/${userId}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ is_active: nextActive }),
+          });
+          await loadAdminUsers();
+          showStatus('ユーザー状態を更新しました。', 'success');
+        } catch (error) {
+          showStatus(error.message || '状態更新に失敗しました。', 'danger');
+        }
+      }
+
+      if (action === 'reset') {
+        const input = elements.adminUserTableBody.querySelector(`[data-password-input="${userId}"]`);
+        const newPassword = input?.value || '';
+        if (!newPassword) {
+          showStatus('新しいパスワードを入力してください。', 'warning');
+          return;
+        }
+        try {
+          await apiFetch(`/api/admin/users/${userId}/password`, {
+            method: 'PATCH',
+            body: JSON.stringify({ password: newPassword }),
+          });
+          if (input) input.value = '';
+          showStatus('パスワードを再設定しました。', 'success');
+        } catch (error) {
+          showStatus(error.message || 'パスワード再設定に失敗しました。', 'danger');
+        }
+      }
+    });
+  }
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '');

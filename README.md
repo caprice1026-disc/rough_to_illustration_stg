@@ -63,6 +63,7 @@
    >>> db.session.add(u); db.session.commit(); exit()
    ```
    - `INITIAL_USER_USERNAME` / `INITIAL_USER_EMAIL` / `INITIAL_USER_PASSWORD` を設定している場合は、`init-db` 実行時に `ensure_initial_user` が自動実行されます（アプリ起動時の自動作成は行いません）。
+   - `init-db` で作成された初期ユーザーは管理者権限（`role=admin`）になります。
 
 ## 起動方法
 ```bash
@@ -78,6 +79,11 @@ flask --app app.py run  # または python app.py
    - インペイント/アウトペイント: 編集元画像とマスク画像＋追加指示
 3. 「生成をリクエスト」を押すと Gemini API に送信され、生成画像がプレビューされます。
 4. 「ダウンロード」ボタンから生成画像を保存できます。
+
+### 管理者機能
+- 管理者のみがユーザー作成・無効化・パスワード再設定を行えます。
+- 管理者UIはログイン後に表示され、`/api/admin/users` を利用します。
+- 無効化されたユーザーはログインできません。
 
 ### UIのヒント
 - 画面上部の「生成」「チャット」タブで画面を切り替えられます。

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from flask import Flask, current_app, jsonify, redirect, request
+import json
+import time
+from uuid import uuid4
+
+from flask import Flask, current_app, g, jsonify, redirect, request
 from flask.cli import with_appcontext
+from flask_login import current_user, logout_user
 from flask_migrate import upgrade
 from flask_wtf.csrf import CSRFError
 import click
@@ -38,7 +43,9 @@ def create_app(config_object: object | None = None) -> Flask:
     csrf.init_app(app)
     login_manager.login_view = "spa.index"
     register_auth_handlers()
+    register_user_status_handlers(app)
     register_security_handlers(app)
+    register_request_logging(app)
     register_cli(app)
 
     register_blueprints(app)
@@ -113,7 +120,12 @@ def ensure_initial_user(app: Flask) -> None:
         app.logger.info("イニシャルユーザーの環境変数が未設定のため作成をスキップしました。")
         return
 
-    if User.query.filter((User.username == username) | (User.email == email)).first():
+    existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
+    if existing_user:
+        if existing_user.role != "admin":
+            existing_user.role = "admin"
+            db.session.commit()
+            app.logger.info("既存のイニシャルユーザーに管理者権限を付与しました。")
         return
 
     if User.query.first() is not None:
@@ -122,6 +134,7 @@ def ensure_initial_user(app: Flask) -> None:
 
     user = User(username=username, email=email)
     user.set_password(password)
+    user.role = "admin"
     db.session.add(user)
     db.session.commit()
     app.logger.info("イニシャルユーザーを作成しました。")
@@ -166,6 +179,21 @@ def register_auth_handlers() -> None:
         return redirect("/")
 
 
+def register_user_status_handlers(app: Flask) -> None:
+    """無効化ユーザーのセッションを失効させる。"""
+
+    @app.before_request
+    def enforce_active_user():
+        if not current_user.is_authenticated:
+            return None
+        if current_user.is_active:
+            return None
+        logout_user()
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "アカウントが無効化されています。"}), 403
+        return redirect("/")
+
+
 def register_security_handlers(app: Flask) -> None:
     """APIリクエスト向けのCSRF/Originチェックを登録する。"""
 
@@ -191,6 +219,37 @@ def register_security_handlers(app: Flask) -> None:
         if request.path.startswith("/api/"):
             return jsonify({"error": "CSRFトークンが不正です。"}), 400
         return "CSRFトークンが不正です。", 400
+
+
+def register_request_logging(app: Flask) -> None:
+    """リクエストID付与と構造化ログを設定する。"""
+
+    @app.before_request
+    def start_request_timer():
+        g.request_id = request.headers.get("X-Request-Id") or uuid4().hex
+        g.request_start = time.perf_counter()
+
+    @app.after_request
+    def log_request(response):
+        start_time = g.get("request_start")
+        duration_ms = None
+        if isinstance(start_time, (int, float)):
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        user_id = current_user.id if current_user.is_authenticated else None
+        payload = {
+            "type": "request",
+            "request_id": g.get("request_id"),
+            "method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "user_id": user_id,
+            "remote_addr": request.headers.get("X-Forwarded-For", request.remote_addr),
+        }
+        app.logger.info(json.dumps(payload, ensure_ascii=False))
+        response.headers["X-Request-Id"] = g.get("request_id", "")
+        return response
 
 
 def register_cli(app: Flask) -> None:

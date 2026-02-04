@@ -7,6 +7,7 @@ from typing import Any
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
@@ -35,6 +36,21 @@ def _serialize_user(user: User) -> dict[str, Any]:
         "username": user.username,
         "email": user.email,
         "is_initial_user": user.is_initial_user,
+        "is_admin": user.is_admin,
+        "is_active": user.is_active,
+    }
+
+
+def _serialize_admin_user(user: User) -> dict[str, Any]:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "is_active": user.is_active,
+        "is_initial_user": user.is_initial_user,
+        "created_at": user.created_at.isoformat() if user.created_at else "",
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else "",
     }
 
 
@@ -130,6 +146,26 @@ def _extract_payload() -> dict[str, Any]:
     return {}
 
 
+def _require_admin():
+    if not current_user.is_authenticated:
+        return _error("認証が必要です。", 401)
+    if not current_user.is_admin:
+        return _error("管理者のみが利用できます。", 403)
+    return None
+
+
+def _parse_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    return None
+
+
 def _build_payload_json(mode: str, data: dict[str, Any]) -> dict[str, Any]:
     if "payload_json" in data and isinstance(data["payload_json"], dict):
         return data["payload_json"]
@@ -163,7 +199,14 @@ def _validate_payload_json(mode: str, payload: dict[str, Any]) -> str | None:
 
 @api_bp.get("/health")
 def health():
-    return _json({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
+    db_ok = True
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        db_ok = False
+        current_app.logger.error("DBヘルスチェックに失敗しました: %s", exc)
+    status = "ok" if db_ok else "error"
+    return _json({"status": status, "timestamp": datetime.utcnow().isoformat(), "db_ok": db_ok})
 
 
 @api_bp.get("/csrf")
@@ -195,8 +238,13 @@ def login():
     user = User.query.filter_by(username=username).first()
     if not user or not user.check_password(password):
         return _error("ユーザー名またはパスワードが違います。", 401)
+    if not user.is_active:
+        return _error("このアカウントは無効化されています。", 403)
 
     login_user(user)
+    user.last_login_at = datetime.utcnow()
+    db.session.add(user)
+    db.session.commit()
     return _json({"user": _serialize_user(user)})
 
 
@@ -210,8 +258,9 @@ def logout():
 @api_bp.post("/auth/signup")
 @login_required
 def signup():
-    if not current_user.is_initial_user:
-        return _error("初期ユーザーのみが新規登録できます。", 403)
+    error = _require_admin()
+    if error:
+        return error
 
     data = _extract_payload()
     if not data:
@@ -229,9 +278,100 @@ def signup():
 
     user = User(username=username, email=email)
     user.set_password(password)
+    user.role = "user"
     db.session.add(user)
     db.session.commit()
     return _json({"user": _serialize_user(user)}, 201)
+
+
+@api_bp.get("/admin/users")
+@login_required
+def admin_users():
+    error = _require_admin()
+    if error:
+        return error
+    users = User.query.order_by(User.created_at.asc()).all()
+    return _json({"users": [_serialize_admin_user(user) for user in users]})
+
+
+@api_bp.post("/admin/users")
+@login_required
+def admin_create_user():
+    error = _require_admin()
+    if error:
+        return error
+
+    data = _extract_payload()
+    if not data:
+        data = request.form.to_dict()
+
+    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+
+    if not username or not email or not password:
+        return _error("すべての項目を入力してください。", 400)
+    if len(username) > 80:
+        return _error("ユーザー名は80文字以内にしてください。", 400)
+    if len(email) > 255:
+        return _error("メールアドレスは255文字以内にしてください。", 400)
+
+    if User.query.filter((User.username == username) | (User.email == email)).first():
+        return _error("同じユーザー名またはメールアドレスが既に存在します。", 400)
+
+    user = User(username=username, email=email)
+    user.set_password(password)
+    user.role = "user"
+    user.is_active = True
+    db.session.add(user)
+    db.session.commit()
+    return _json({"user": _serialize_admin_user(user)}, 201)
+
+
+@api_bp.patch("/admin/users/<int:user_id>/status")
+@login_required
+def admin_update_user_status(user_id: int):
+    error = _require_admin()
+    if error:
+        return error
+
+    data = _extract_payload()
+    is_active = _parse_bool(data.get("is_active"))
+    if is_active is None:
+        return _error("is_active を true/false で指定してください。", 400)
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return _error("対象ユーザーが見つかりません。", 404)
+    if user.id == current_user.id and not is_active:
+        return _error("自分自身を無効化することはできません。", 400)
+
+    user.is_active = is_active
+    db.session.add(user)
+    db.session.commit()
+    return _json({"user": _serialize_admin_user(user)})
+
+
+@api_bp.patch("/admin/users/<int:user_id>/password")
+@login_required
+def admin_reset_password(user_id: int):
+    error = _require_admin()
+    if error:
+        return error
+
+    data = _extract_payload()
+    password = data.get("password") or ""
+    if not password:
+        return _error("新しいパスワードを入力してください。", 400)
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return _error("対象ユーザーが見つかりません。", 404)
+
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    return _json({"user": _serialize_admin_user(user)})
 
 
 @api_bp.get("/modes")

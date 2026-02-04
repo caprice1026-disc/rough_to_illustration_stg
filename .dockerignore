@@ -1,0 +1,12 @@
+.env
+.env.*
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+.git/
+.agent/
+instance/
+*.db
+chat_images/
+generated_images/

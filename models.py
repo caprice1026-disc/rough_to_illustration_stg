@@ -75,6 +75,12 @@ class User(db.Model, UserMixin):
             return False
         return self.username == username and self.email == email
 
+    @property
+    def is_admin(self) -> bool:
+        """管理者権限を持つかどうかを判定する。"""
+
+        return self.role == "admin"
+
 
 class Preset(db.Model):
     """
