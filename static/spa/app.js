@@ -10,6 +10,7 @@
   lastResult: null,
   csrfToken: null,
   adminUsers: [],
+  chatEnabled: true,
 };
 
 const elements = {};
@@ -23,6 +24,7 @@ const cacheElements = () => {
   elements.loginPassword = document.getElementById('loginPassword');
   elements.navUserBadge = document.getElementById('navUserBadge');
   elements.navViews = document.getElementById('navViews');
+  elements.navChatButton = document.getElementById('navChatButton');
   elements.navAdminButton = document.getElementById('navAdminButton');
   elements.logoutButton = document.getElementById('logoutButton');
   elements.generateView = document.getElementById('generateView');
@@ -161,6 +163,7 @@ const setLoggedOut = () => {
   state.lastResult = null;
   state.csrfToken = null;
   state.adminUsers = [];
+  state.chatEnabled = true;
   clearStatus();
   renderLogin();
 };
@@ -185,6 +188,9 @@ const renderApp = () => {
   if (elements.adminView) {
     elements.adminView.classList.toggle('d-none', !state.user?.is_admin);
   }
+  if (elements.navChatButton) {
+    elements.navChatButton.classList.toggle('d-none', !state.chatEnabled);
+  }
   if (elements.navAdminButton) {
     elements.navAdminButton.classList.toggle('d-none', !state.user?.is_admin);
   }
@@ -197,6 +203,9 @@ const renderApp = () => {
 const setView = (viewName) => {
   let nextView = viewName;
   if (nextView === 'admin' && !state.user?.is_admin) {
+    nextView = 'generate';
+  }
+  if (nextView === 'chat' && !state.chatEnabled) {
     nextView = 'generate';
   }
   state.currentView = nextView;
@@ -855,15 +864,21 @@ const bindEvents = () => {
 };
 
 const bootstrapAppData = async () => {
-  const [modesPayload, optionsPayload, chatModesPayload] = await Promise.all([
+  const [modesPayload, optionsPayload] = await Promise.all([
     apiFetch('/api/modes'),
     apiFetch('/api/options'),
-    apiFetch('/api/chat/modes'),
   ]);
 
   state.modes = modesPayload.modes || [];
   state.options = optionsPayload;
-  state.chatModes = chatModesPayload.modes || [];
+  const chatMode = state.modes.find((mode) => mode.id === 'chat_mode');
+  state.chatEnabled = Boolean(chatMode?.enabled);
+  if (state.chatEnabled) {
+    const chatModesPayload = await apiFetch('/api/chat/modes');
+    state.chatModes = chatModesPayload.modes || [];
+  } else {
+    state.chatModes = [];
+  }
 
   populateModes();
   populateOptions();
@@ -875,7 +890,7 @@ const bootstrapAppData = async () => {
     updateModePanels(defaultMode);
   }
 
-  if (elements.chatModeSelect) {
+  if (elements.chatModeSelect && state.chatEnabled) {
     elements.chatModeSelect.value = state.chatModes[0]?.id || 'text_chat';
     toggleChatExtras(elements.chatModeSelect.value);
   }

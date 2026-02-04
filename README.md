@@ -35,6 +35,7 @@
    GEMINI_API_KEY="<GeminiのAPIキー>"     # 互換のため GOOGLE_API_KEY でも可
    SECRET_KEY="任意の秘密鍵"             # 必須: 未設定だと起動を停止します
    DATABASE_URL="sqlite:///app.db"      # ローカル用: 未指定ならSQLiteファイルを利用
+   CHAT_ENABLED="true"                 # チャット機能のON/OFF (true/false)
    CHAT_IMAGE_STORAGE="local"           # local / gcs（ローカルはlocal推奨）
    CHAT_IMAGE_DIR="chat_images"         # local保存先（instance配下）
    CHAT_IMAGE_BUCKET="your-bucket"      # gcsの場合のみ必須
@@ -106,6 +107,7 @@ docker run --rm -p 8080:8080 \
 - `GEMINI_API_KEY` または `GOOGLE_API_KEY`: 必須。Gemini API のキー。
 - `SECRET_KEY`: 必須。Flaskのセッション暗号化に使用。
 - `DATABASE_URL`: ローカルでは任意。本番では `DATABASE_URL` または `DB_*` が必須（未指定の場合は起動エラー）。
+- `CHAT_ENABLED`: 任意。`true` でチャットを有効、`false` で無効（デフォルトは `true`）。
 - `CHAT_IMAGE_STORAGE`: 任意。`local` または `gcs`（本番は `gcs` 推奨、検証は `local` 推奨）。
 - `CHAT_IMAGE_DIR`: 任意。`local` の保存先（`instance` 配下の相対パスを推奨）。
 - `CHAT_IMAGE_BUCKET`: `gcs` の場合に必須。チャット画像を保存するGCSバケット名。

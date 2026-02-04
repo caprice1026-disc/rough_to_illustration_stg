@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Optional
 
 
@@ -12,6 +13,21 @@ class GenerationMode:
     label: str
     description: str
     enabled: bool = True
+
+
+def _env_bool(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_chat_enabled() -> bool:
+    """チャット機能の有効/無効を環境変数から判定する。"""
+
+    raw_value = os.environ.get("CHAT_ENABLED")
+    if raw_value is None:
+        return True
+    return _env_bool(raw_value)
 
 
 MODE_ROUGH_WITH_INSTRUCTIONS = GenerationMode(
@@ -37,6 +53,7 @@ MODE_CHAT = GenerationMode(
     id="chat_mode",
     label="チャットモード（テキスト/画像）",
     description="会話しながらテキスト相談や画像生成を行うチャット専用モードです。",
+    enabled=_is_chat_enabled(),
 )
 
 ALL_MODES: list[GenerationMode] = [

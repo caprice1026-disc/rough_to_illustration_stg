@@ -141,6 +141,7 @@ class Config:
     INITIAL_USER_PASSWORD = os.environ.get("INITIAL_USER_PASSWORD")
     APP_AUTO_MIGRATE = _env_bool(os.environ.get("APP_AUTO_MIGRATE"))
     APP_AUTO_INIT_USER = _env_bool(os.environ.get("APP_AUTO_INIT_USER"))
+    CHAT_ENABLED = _env_bool(os.environ.get("CHAT_ENABLED", "true"))
     CHAT_IMAGE_STORAGE = _resolve_chat_image_storage(APP_ENV)
     CHAT_IMAGE_BUCKET = os.environ.get("CHAT_IMAGE_BUCKET")
     CHAT_IMAGE_DIR = os.environ.get("CHAT_IMAGE_DIR", "chat_images")

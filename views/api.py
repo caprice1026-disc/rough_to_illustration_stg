@@ -166,6 +166,11 @@ def _parse_bool(value: Any) -> bool | None:
     return None
 
 
+def _ensure_chat_enabled():
+    if not current_app.config.get("CHAT_ENABLED", True):
+        abort(404)
+
+
 def _build_payload_json(mode: str, data: dict[str, Any]) -> dict[str, Any]:
     if "payload_json" in data and isinstance(data["payload_json"], dict):
         return data["payload_json"]
@@ -383,7 +388,9 @@ def list_modes():
                     "id": mode.id,
                     "label": mode.label,
                     "description": mode.description,
-                    "enabled": mode.enabled,
+                    "enabled": mode.enabled
+                    if mode.id != modes.MODE_CHAT.id
+                    else bool(current_app.config.get("CHAT_ENABLED", True)),
                 }
                 for mode in modes.ALL_MODES
             ]
@@ -576,12 +583,14 @@ def asset(asset_id: int):
 @api_bp.get("/chat/modes")
 @login_required
 def chat_modes():
+    _ensure_chat_enabled()
     return _json({"modes": [_serialize_chat_mode(mode) for mode in chat_service.CHAT_MODES]})
 
 
 @api_bp.get("/chat/sessions")
 @login_required
 def chat_sessions():
+    _ensure_chat_enabled()
     sessions = (
         ChatSession.query.filter_by(user_id=current_user.id)
         .order_by(ChatSession.updated_at.desc())
@@ -596,6 +605,7 @@ def chat_sessions():
 @api_bp.post("/chat/sessions")
 @login_required
 def create_chat_session():
+    _ensure_chat_enabled()
     data = _extract_payload()
     title = (data.get("title") or "").strip() or "新しいチャット"
     session = chat_service.create_session(current_user.id, title=title)
@@ -605,6 +615,7 @@ def create_chat_session():
 @api_bp.get("/chat/sessions/<int:session_id>")
 @login_required
 def chat_session_detail(session_id: int):
+    _ensure_chat_enabled()
     session = _session_or_404(session_id)
     return _json({"session": _serialize_chat_session(session, include_messages=True)})
 
@@ -612,6 +623,7 @@ def chat_session_detail(session_id: int):
 @api_bp.post("/chat/sessions/<int:session_id>/messages")
 @login_required
 def chat_messages(session_id: int):
+    _ensure_chat_enabled()
     session = _session_or_404(session_id)
     data = _extract_payload()
     user_message = (request.form.get("message") or data.get("message") or "").strip()
@@ -673,6 +685,7 @@ def chat_messages(session_id: int):
 @api_bp.get("/chat/assets/<int:attachment_id>")
 @login_required
 def chat_asset(attachment_id: int):
+    _ensure_chat_enabled()
     attachment = (
         ChatAttachment.query.join(ChatMessage)
         .join(ChatSession)
