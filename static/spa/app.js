@@ -52,6 +52,8 @@ const cacheElements = () => {
   elements.chatModeHelper = document.getElementById('chatModeHelper');
   elements.currentSessionBadge = document.getElementById('currentSessionBadge');
   elements.chatStatus = document.getElementById('chatStatus');
+  elements.chatMessage = document.getElementById('chatMessage');
+  elements.chatImages = document.getElementById('chatImages');
   elements.signupForm = document.getElementById('signupForm');
   elements.signupUsername = document.getElementById('signupUsername');
   elements.signupEmail = document.getElementById('signupEmail');
@@ -103,18 +105,21 @@ const ensureCsrfToken = async () => {
 const apiFetch = async (url, options = {}) => {
   const headers = options.headers ? { ...options.headers } : {};
   const method = (options.method || 'GET').toUpperCase();
+  const retryingCsrf = Boolean(options._csrfRetry);
+  const fetchOptions = { ...options };
+  delete fetchOptions._csrfRetry;
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const token = await ensureCsrfToken();
     if (token) headers['X-CSRFToken'] = token;
   }
-  if (!(options.body instanceof FormData)) {
+  if (!(fetchOptions.body instanceof FormData)) {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   }
   headers['Accept'] = headers['Accept'] || 'application/json';
 
   const response = await fetch(url, {
     credentials: 'same-origin',
-    ...options,
+    ...fetchOptions,
     headers,
   });
 
@@ -128,6 +133,16 @@ const apiFetch = async (url, options = {}) => {
   }
 
   if (!response.ok) {
+    if (
+      response.status === 400 &&
+      !retryingCsrf &&
+      payload.error &&
+      payload.error.includes('CSRF')
+    ) {
+      state.csrfToken = null;
+      await fetchCsrfToken();
+      return apiFetch(url, { ...options, _csrfRetry: true });
+    }
     throw new Error(payload.error || '通信に失敗しました。');
   }
 
@@ -140,6 +155,7 @@ const setLoggedOut = () => {
   state.sessions = [];
   state.currentSessionId = null;
   state.lastResult = null;
+  state.csrfToken = null;
   clearStatus();
   renderLogin();
 };
@@ -632,10 +648,19 @@ const handleChatSubmit = async (event) => {
     return;
   }
 
+  const rawMessage = elements.chatMessage?.value || '';
+  const message = rawMessage.trim();
+  const hasImages = (elements.chatImages?.files?.length || 0) > 0;
+  if (!message && !hasImages) {
+    showStatus('メッセージまたは画像を入力してください。', 'warning');
+    return;
+  }
+
   const selectedMode = elements.chatModeSelect?.value || 'text_chat';
   if (elements.chatStatus) elements.chatStatus.textContent = '送信中...';
   try {
     const formData = new FormData(elements.chatForm);
+    formData.set('message', message);
     await apiFetch(`/api/chat/sessions/${state.currentSessionId}/messages`, {
       method: 'POST',
       body: formData,
@@ -811,7 +836,7 @@ const initMaskEditor = () => {
     ctx.lineJoin = 'round';
     ctx.lineWidth = brushSizeInput ? Number(brushSizeInput.value || 24) : 24;
     ctx.globalCompositeOperation = isErasing ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + 0.5, y + 0.5);

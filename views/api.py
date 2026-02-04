@@ -473,8 +473,10 @@ def chat_session_detail(session_id: int):
 @login_required
 def chat_messages(session_id: int):
     session = _session_or_404(session_id)
-    user_message = (request.form.get("message") or "").strip()
-    files = request.files.getlist("images")
+    data = _extract_payload()
+    user_message = (request.form.get("message") or data.get("message") or "").strip()
+    raw_files = request.files.getlist("images")
+    files = [file for file in raw_files if file and file.filename]
 
     if not user_message and not files:
         return _error("メッセージまたは画像を入力してください。", 400)

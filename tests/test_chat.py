@@ -95,3 +95,24 @@ def test_text_chat_persists_messages(client, app, monkeypatch):
         assert len(messages) == 2
         roles = [message.role for message in messages]
         assert roles == ["user", "assistant"]
+
+
+def test_text_chat_accepts_json_payload(client, app, monkeypatch):
+    login(client)
+
+    with app.app_context():
+        session = ChatSession(user_id=User.query.first().id, title="新しいチャット")
+        db.session.add(session)
+        db.session.commit()
+        session_id = session.id
+
+    monkeypatch.setattr("services.chat_service.generate_multimodal_reply", lambda *_: "json reply")
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        json={"message": "JSON送信"},
+        headers={"X-CSRFToken": get_csrf_token(client)},
+    )
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert payload["assistant"]["text"] == "json reply"
