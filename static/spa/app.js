@@ -23,6 +23,7 @@ const cacheElements = () => {
   elements.loginPassword = document.getElementById('loginPassword');
   elements.navUserBadge = document.getElementById('navUserBadge');
   elements.navViews = document.getElementById('navViews');
+  elements.navAdminButton = document.getElementById('navAdminButton');
   elements.logoutButton = document.getElementById('logoutButton');
   elements.generateView = document.getElementById('generateView');
   elements.chatView = document.getElementById('chatView');
@@ -184,6 +185,9 @@ const renderApp = () => {
   if (elements.adminView) {
     elements.adminView.classList.toggle('d-none', !state.user?.is_admin);
   }
+  if (elements.navAdminButton) {
+    elements.navAdminButton.classList.toggle('d-none', !state.user?.is_admin);
+  }
   setView(state.currentView);
   if (state.user?.is_admin) {
     loadAdminUsers();
@@ -191,16 +195,24 @@ const renderApp = () => {
 };
 
 const setView = (viewName) => {
-  state.currentView = viewName;
-  if (elements.generateView) elements.generateView.classList.toggle('d-none', viewName !== 'generate');
-  if (elements.chatView) elements.chatView.classList.toggle('d-none', viewName !== 'chat');
+  let nextView = viewName;
+  if (nextView === 'admin' && !state.user?.is_admin) {
+    nextView = 'generate';
+  }
+  state.currentView = nextView;
+  if (elements.generateView) elements.generateView.classList.toggle('d-none', nextView !== 'generate');
+  if (elements.chatView) elements.chatView.classList.toggle('d-none', nextView !== 'chat');
+  if (elements.adminView) elements.adminView.classList.toggle('d-none', nextView !== 'admin');
   if (elements.navViews) {
     elements.navViews.querySelectorAll('button[data-view]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.view === viewName);
+      btn.classList.toggle('active', btn.dataset.view === nextView);
     });
   }
-  if (viewName === 'chat') {
+  if (nextView === 'chat') {
     ensureChatReady();
+  }
+  if (nextView === 'admin') {
+    loadAdminUsers();
   }
 };
 
@@ -836,7 +848,7 @@ const bindEvents = () => {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '');
-    if (view === 'chat' || view === 'generate') {
+    if (view === 'chat' || view === 'generate' || view === 'admin') {
       setView(view);
     }
   });
@@ -874,7 +886,7 @@ const bootstrapAppData = async () => {
   renderResult(state.lastResult);
 
   const initialView = window.location.hash.replace('#', '') || 'generate';
-  if (initialView === 'chat' || initialView === 'generate') {
+  if (initialView === 'chat' || initialView === 'generate' || initialView === 'admin') {
     setView(initialView);
   }
 };

@@ -17,3 +17,5 @@ instance/_utf8_test.txt
 instance/chat_images/
 .editorconfig
 test.py
+tests/test_admin.py
+pytest.cmd

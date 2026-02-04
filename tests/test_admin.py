@@ -17,6 +17,8 @@ def app(tmp_path):
             "TESTING": True,
             "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_path}",
             "SECRET_KEY": "test-secret",
+            "APP_AUTO_MIGRATE": False,
+            "APP_AUTO_INIT_USER": False,
         }
     )
     with app.app_context():
