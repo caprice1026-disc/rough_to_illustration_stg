@@ -263,9 +263,9 @@ def register_cli(app: Flask) -> None:
         click.echo("データベースの初期化が完了しました。")
 
 
-app = create_app()
-
-
 if __name__ == "__main__":
+    # 開発用途: 直接 `python app.py` で起動できるようにする。
+    # 本番(Cloud Run/Gunicorn)は `wsgi.py` をエントリポイントとして利用する。
+    app = create_app()
     debug_enabled = bool(app.config.get("DEBUG"))
     app.run(debug=debug_enabled)

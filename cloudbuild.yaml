@@ -13,6 +13,7 @@ steps:
       - -c
       - |
         python -m pip install -r requirements.txt
+        export SECRET_KEY=ci-test-secret
         pytest -q
   - name: gcr.io/cloud-builders/docker
     args:
