@@ -97,16 +97,20 @@ docker build -t rough-to-illustration .
 docker run --rm -p 8080:8080 \
   -e GEMINI_API_KEY="<GeminiのAPIキー>" \
   -e SECRET_KEY="任意の秘密鍵" \
-  -e DATABASE_URL="sqlite:///app.db" \
-  -e CHAT_IMAGE_BUCKET="your-bucket" \
   -e APP_ENV="production" \
+  -e DB_USER="app_user" \
+  -e DB_PASSWORD="your_db_password" \
+  -e DB_NAME="app_db" \
+  -e INSTANCE_CONNECTION_NAME="your-gcp-project:asia-northeast1:your-instance" \
+  -e CHAT_IMAGE_STORAGE="gcs" \
+  -e CHAT_IMAGE_BUCKET="your-bucket" \
   rough-to-illustration
 ```
 
 ### Docker起動時に指定する環境変数
 - `GEMINI_API_KEY` または `GOOGLE_API_KEY`: 必須。Gemini API のキー。
 - `SECRET_KEY`: 必須。Flaskのセッション暗号化に使用。
-- `DATABASE_URL`: ローカルでは任意。本番では `DATABASE_URL` または `DB_*` が必須（未指定の場合は起動エラー）。
+- `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME`: 本番では必須。Cloud SQL の Unix ソケット接続に使用（未指定の場合は起動エラー）。
 - `CHAT_ENABLED`: 任意。`true` でチャットを有効、`false` で無効（デフォルトは `true`）。
 - `CHAT_IMAGE_STORAGE`: 任意。`local` または `gcs`（本番は `gcs` 推奨、検証は `local` 推奨）。
 - `CHAT_IMAGE_DIR`: 任意。`local` の保存先（`instance` 配下の相対パスを推奨）。
@@ -121,7 +125,8 @@ docker run --rm -p 8080:8080 \
 
 ## 本番運用時の補足
 ### Cloud Runでの推奨設定
-- `SECRET_KEY` / `GEMINI_API_KEY`（または `GOOGLE_API_KEY`）/ `DATABASE_URL` または `DB_*` / `CHAT_IMAGE_BUCKET` は Secret Manager から環境変数へ注入する構成を推奨します。
+- `SECRET_KEY` / `GEMINI_API_KEY`（または `GOOGLE_API_KEY`）/ `DB_PASSWORD` / `CHAT_IMAGE_BUCKET` は Secret Manager から環境変数へ注入する構成を推奨します。
+- `DB_USER` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` は環境変数で設定してください（Secret でも運用可能）。
 - `.env` はローカル開発専用です。本番では `.env` をコンテナ内に配置しない前提で運用してください（ローカルはSQLite、本番は外部DB + GCSバケットという差分を想定）。
 - 本番は `APP_ENV=production` を必須にします（設定されていない場合は起動エラーになります）。
 - `MAX_CONTENT_LENGTH` / `MAX_FORM_MEMORY_SIZE` のデフォルトは 32MB です。Cloud Run のリクエスト上限（32MB）に合わせ、必要に応じて32MB以下で調整してください。
@@ -149,15 +154,10 @@ HTTPS終端がロードバランサー側にある場合は、アプリケーシ
 - 直接アプリケーションにアクセスさせる構成では、プロキシヘッダーを付与しないようにしてください。
 
 ### データベース / Cloud SQL
-- 本番では MySQL（PyMySQL）を前提とし、`DATABASE_URL` もしくは `DB_*` + `INSTANCE_CONNECTION_NAME` から接続情報を決定します（未設定の場合は起動エラーになります）。
-- `DATABASE_URL` を使う場合の例:
-  - MySQL/Unixソケット: `mysql+pymysql://USER:PASSWORD@/DBNAME?unix_socket=/cloudsql/INSTANCE_CONNECTION_NAME`
-  - MySQL/TCP: `mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME`
-- `DB_*` を使う場合の例（Cloud Run 推奨）:
-  - `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` を設定すると、`/cloudsql/<INSTANCE_CONNECTION_NAME>` のUnixソケットで接続します。
-  - TCP接続が必要な場合は `DB_HOST` / `DB_PORT` を追加で設定してください。
-  - 明示的なソケットパスを使いたい場合は `DB_SOCKET` を指定できます。
-- `DATABASE_URL` が `mysql://` の場合は自動的に `mysql+pymysql://` に補正されます。
+- 本番では MySQL（PyMySQL）を前提とし、`DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` で接続情報を決定します（未設定の場合は起動エラーになります）。
+- Cloud Run では `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` を設定すると、`/cloudsql/<INSTANCE_CONNECTION_NAME>` の Unix ソケットで接続します。
+- TCP接続が必要な場合は `DB_HOST` / `DB_PORT` を追加で設定してください。
+- 明示的なソケットパスを使いたい場合は `DB_SOCKET` を指定できます。
 - 本番運用では `flask --app app.py db upgrade` を実行してから Cloud Run をデプロイしてください（初期ユーザーを作成する場合は `flask --app app.py init-db` を使用します）。
 - MySQL のデータベース自体は事前に作成してください（`flask --app app.py db upgrade` はテーブル作成のみを行います）。
  - 検証環境（staging）は SQLite を使用するため、Cloud SQL への接続は不要です。
@@ -193,9 +193,9 @@ gcloud run jobs create rough-to-illustration-migrate \
   --image asia-northeast1-docker.pkg.dev/PROJECT_ID/cloud-run-source-deploy/rough-to-illustration:latest \
   --command flask \
   --args --app,app.py,db,upgrade \
-  --set-env-vars APP_ENV=production,CHAT_IMAGE_STORAGE=gcs \
-  --set-secrets SECRET_KEY=SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest \
-  --add-cloudsql-instances INSTANCE_CONNECTION_NAME
+  --set-env-vars APP_ENV=production,CHAT_IMAGE_STORAGE=gcs,DB_USER=app_user,DB_NAME=app_db,INSTANCE_CONNECTION_NAME=PROJECT_ID:asia-northeast1:INSTANCE_ID \
+  --set-secrets SECRET_KEY=SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,DB_PASSWORD=DB_PASSWORD:latest \
+  --add-cloudsql-instances PROJECT_ID:asia-northeast1:INSTANCE_ID
 ```
 Cloud Build のサービスアカウントには、Cloud Run の更新と Job 実行ができる権限（例: Cloud Run Admin / Service Account User）を付与してください。
 
@@ -207,7 +207,7 @@ Cloud Build のサービスアカウントには、Cloud Run の更新と Job �
 
 #### 検証環境（SQLite）での注意点
 - SQLite は Cloud Run インスタンスのローカルファイルに作成されるため、デプロイやスケールで消える前提です。
-- 検証用途で使う場合は `APP_ENV=staging`、`DATABASE_URL=sqlite:///app.db`、`CHAT_IMAGE_STORAGE=local` を設定してください。
+- 検証用途で使う場合は `APP_ENV=staging`、`DATABASE_URL=sqlite:///app.db`、`CHAT_IMAGE_STORAGE=local` を設定してください（本番デプロイ構成は DB_USER 方式を使用）。
 
 ### Cloud Run（GUI）デプロイ手順
 1. 事前準備
@@ -216,18 +216,16 @@ Cloud Build のサービスアカウントには、Cloud Run の更新と Job �
    - Secret Manager に以下を登録
      - `SECRET_KEY`
      - `GEMINI_API_KEY`
-     - `DATABASE_URL` または `DB_USER` / `DB_PASSWORD` / `DB_NAME`
-     - `INSTANCE_CONNECTION_NAME`（または `DB_SOCKET` を使う場合はその値）
-     - `CHAT_IMAGE_BUCKET`
+      - `DB_PASSWORD`
+      - `CHAT_IMAGE_BUCKET`
 2. Cloud Run コンソールで「サービスを作成」
    - コンテナイメージを選択（Artifact Registry のイメージ）
 3. 「接続」→「Cloud SQL 接続を追加」
    - 対象インスタンスを選択
-   - いずれかを選択:
-     - `DATABASE_URL` を使用する場合は Unix ソケット形式を設定（例: `mysql+pymysql://USER:PASSWORD@/DBNAME?unix_socket=/cloudsql/INSTANCE_CONNECTION_NAME`）
-     - `DB_*` を使用する場合は `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` を環境変数に設定
+   - `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `INSTANCE_CONNECTION_NAME` を環境変数・Secretに設定
 4. 「変数とシークレット」で環境変数/Secret を紐付け
-   - `SECRET_KEY`, `GEMINI_API_KEY`, `DATABASE_URL` または `DB_*`, `CHAT_IMAGE_BUCKET` を Secret Manager から設定
+   - `SECRET_KEY`, `GEMINI_API_KEY`, `DB_PASSWORD`, `CHAT_IMAGE_BUCKET` を Secret Manager から設定
+   - `DB_USER`, `DB_NAME`, `INSTANCE_CONNECTION_NAME`, `APP_ENV=production`, `CHAT_IMAGE_STORAGE=gcs` を環境変数に設定
 5. サービスアカウントの権限付与
    - Cloud SQL Client 権限
    - `CHAT_IMAGE_BUCKET` 用に Storage Object Admin などの権限を付与
