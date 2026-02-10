@@ -23,6 +23,7 @@
           <div class="btn-group d-none" id="navViews">
             <button class="btn btn-outline-light" type="button" data-view="generate">生成</button>
             <button class="btn btn-outline-light" type="button" data-view="chat" id="navChatButton">チャット</button>
+            <button class="btn btn-outline-light d-none" type="button" data-view="account" id="navAccountButton">アカウント</button>
             <button class="btn btn-outline-light d-none" type="button" data-view="admin" id="navAdminButton">管理</button>
           </div>
           <button class="btn btn-outline-light d-none" type="button" id="logoutButton">ログアウト</button>
@@ -254,6 +255,49 @@
           </div>
         </section>
 
+        <section id="accountView" class="d-none mt-4">
+          <div class="card glass-card">
+            <div class="card-body">
+              <h3 class="card-title">アカウント設定</h3>
+              <p class="text-white-50">ログイン中ユーザーの情報確認とパスワード変更を行えます。</p>
+
+              <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                  <label class="form-label" for="accountUsername">ユーザー名</label>
+                  <input class="form-control" id="accountUsername" type="text" readonly>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="accountEmail">メールアドレス</label>
+                  <input class="form-control" id="accountEmail" type="text" readonly>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="accountRole">権限</label>
+                  <input class="form-control" id="accountRole" type="text" readonly>
+                </div>
+              </div>
+
+              <h3 class="card-title">パスワード変更</h3>
+              <form id="accountPasswordForm" class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="accountCurrentPassword">現在のパスワード</label>
+                  <input class="form-control" id="accountCurrentPassword" name="current_password" type="password" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="accountNewPassword">新しいパスワード</label>
+                  <input class="form-control" id="accountNewPassword" name="new_password" type="password" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="accountNewPasswordConfirm">新しいパスワード（確認）</label>
+                  <input class="form-control" id="accountNewPasswordConfirm" name="new_password_confirm" type="password" required>
+                </div>
+                <div class="col-12">
+                  <button class="btn btn-outline-light" type="submit">パスワードを変更</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
         <section id="adminView" class="d-none mt-4">
           <div class="card glass-card">
             <div class="card-body">
@@ -274,6 +318,28 @@
                 </div>
                 <div class="col-12">
                   <button class="btn btn-outline-light" type="submit">ユーザーを作成</button>
+                </div>
+              </form>
+
+              <hr class="my-4">
+
+              <h3 class="card-title">自分のパスワード変更</h3>
+              <p class="text-white-50">管理者自身のパスワードを変更します。</p>
+              <form id="adminSelfPasswordForm" class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="adminSelfCurrentPassword">現在のパスワード</label>
+                  <input class="form-control" id="adminSelfCurrentPassword" name="current_password" type="password" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="adminSelfNewPassword">新しいパスワード</label>
+                  <input class="form-control" id="adminSelfNewPassword" name="new_password" type="password" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="adminSelfNewPasswordConfirm">新しいパスワード（確認）</label>
+                  <input class="form-control" id="adminSelfNewPasswordConfirm" name="new_password_confirm" type="password" required>
+                </div>
+                <div class="col-12">
+                  <button class="btn btn-outline-light" type="submit">自分のパスワードを変更</button>
                 </div>
               </form>
 
