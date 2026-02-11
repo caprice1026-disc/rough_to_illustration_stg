@@ -25,10 +25,12 @@ const cacheElements = () => {
   elements.navUserBadge = document.getElementById('navUserBadge');
   elements.navViews = document.getElementById('navViews');
   elements.navChatButton = document.getElementById('navChatButton');
+  elements.navAccountButton = document.getElementById('navAccountButton');
   elements.navAdminButton = document.getElementById('navAdminButton');
   elements.logoutButton = document.getElementById('logoutButton');
   elements.generateView = document.getElementById('generateView');
   elements.chatView = document.getElementById('chatView');
+  elements.accountView = document.getElementById('accountView');
   elements.adminView = document.getElementById('adminView');
   elements.generationMode = document.getElementById('generationMode');
   elements.generationModeDescription = document.getElementById('generationModeDescription');
@@ -58,10 +60,21 @@ const cacheElements = () => {
   elements.chatStatus = document.getElementById('chatStatus');
   elements.chatMessage = document.getElementById('chatMessage');
   elements.chatImages = document.getElementById('chatImages');
+  elements.accountUsername = document.getElementById('accountUsername');
+  elements.accountEmail = document.getElementById('accountEmail');
+  elements.accountRole = document.getElementById('accountRole');
+  elements.accountPasswordForm = document.getElementById('accountPasswordForm');
+  elements.accountCurrentPassword = document.getElementById('accountCurrentPassword');
+  elements.accountNewPassword = document.getElementById('accountNewPassword');
+  elements.accountNewPasswordConfirm = document.getElementById('accountNewPasswordConfirm');
   elements.signupForm = document.getElementById('signupForm');
   elements.signupUsername = document.getElementById('signupUsername');
   elements.signupEmail = document.getElementById('signupEmail');
   elements.signupPassword = document.getElementById('signupPassword');
+  elements.adminSelfPasswordForm = document.getElementById('adminSelfPasswordForm');
+  elements.adminSelfCurrentPassword = document.getElementById('adminSelfCurrentPassword');
+  elements.adminSelfNewPassword = document.getElementById('adminSelfNewPassword');
+  elements.adminSelfNewPasswordConfirm = document.getElementById('adminSelfNewPasswordConfirm');
   elements.adminUserTableBody = document.getElementById('adminUserTableBody');
   elements.adminRefreshButton = document.getElementById('adminRefreshButton');
 };
@@ -176,6 +189,13 @@ const renderLogin = () => {
   if (elements.logoutButton) elements.logoutButton.classList.add('d-none');
 };
 
+const renderAccountProfile = () => {
+  if (!state.user) return;
+  if (elements.accountUsername) elements.accountUsername.value = state.user.username || '';
+  if (elements.accountEmail) elements.accountEmail.value = state.user.email || '';
+  if (elements.accountRole) elements.accountRole.value = state.user.is_admin ? 'admin' : 'user';
+};
+
 const renderApp = () => {
   if (elements.loginView) elements.loginView.classList.add('d-none');
   if (elements.appView) elements.appView.classList.remove('d-none');
@@ -191,9 +211,13 @@ const renderApp = () => {
   if (elements.navChatButton) {
     elements.navChatButton.classList.toggle('d-none', !state.chatEnabled);
   }
+  if (elements.navAccountButton) {
+    elements.navAccountButton.classList.toggle('d-none', Boolean(state.user?.is_admin));
+  }
   if (elements.navAdminButton) {
     elements.navAdminButton.classList.toggle('d-none', !state.user?.is_admin);
   }
+  renderAccountProfile();
   setView(state.currentView);
   if (state.user?.is_admin) {
     loadAdminUsers();
@@ -205,12 +229,16 @@ const setView = (viewName) => {
   if (nextView === 'admin' && !state.user?.is_admin) {
     nextView = 'generate';
   }
+  if (nextView === 'account' && (!state.user || state.user.is_admin)) {
+    nextView = state.user?.is_admin ? 'admin' : 'generate';
+  }
   if (nextView === 'chat' && !state.chatEnabled) {
     nextView = 'generate';
   }
   state.currentView = nextView;
   if (elements.generateView) elements.generateView.classList.toggle('d-none', nextView !== 'generate');
   if (elements.chatView) elements.chatView.classList.toggle('d-none', nextView !== 'chat');
+  if (elements.accountView) elements.accountView.classList.toggle('d-none', nextView !== 'account');
   if (elements.adminView) elements.adminView.classList.toggle('d-none', nextView !== 'admin');
   if (elements.navViews) {
     elements.navViews.querySelectorAll('button[data-view]').forEach((btn) => {
@@ -530,6 +558,9 @@ const renderAdminUsers = () => {
             <input type="password" class="form-control" placeholder="新しいPW" data-password-input="${user.id}">
             <button class="btn btn-outline-light" type="button" data-action="reset" data-user-id="${user.id}">再設定</button>
           </div>
+          ${user.role !== 'admin'
+            ? `<button class="btn btn-sm btn-outline-warning" type="button" data-action="promote" data-user-id="${user.id}">admin権限を付与</button>`
+            : ''}
         </div>
       </td>
     `;
@@ -675,6 +706,56 @@ const handlePresetDelete = async () => {
   }
 };
 
+const changeOwnPassword = async ({
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  formElement,
+  successMessage,
+}) => {
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    showStatus('現在のパスワードと新しいパスワードを入力してください。', 'warning');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showStatus('新しいパスワード（確認）が一致しません。', 'warning');
+    return;
+  }
+
+  try {
+    await apiFetch('/api/users/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    if (formElement) formElement.reset();
+    showStatus(successMessage, 'success');
+  } catch (error) {
+    showStatus(error.message || 'パスワード変更に失敗しました。', 'danger');
+  }
+};
+
+const handleAccountPasswordChange = async (event) => {
+  event.preventDefault();
+  await changeOwnPassword({
+    currentPassword: elements.accountCurrentPassword?.value || '',
+    newPassword: elements.accountNewPassword?.value || '',
+    confirmPassword: elements.accountNewPasswordConfirm?.value || '',
+    formElement: elements.accountPasswordForm,
+    successMessage: 'パスワードを変更しました。',
+  });
+};
+
+const handleAdminSelfPasswordChange = async (event) => {
+  event.preventDefault();
+  await changeOwnPassword({
+    currentPassword: elements.adminSelfCurrentPassword?.value || '',
+    newPassword: elements.adminSelfNewPassword?.value || '',
+    confirmPassword: elements.adminSelfNewPasswordConfirm?.value || '',
+    formElement: elements.adminSelfPasswordForm,
+    successMessage: '管理者パスワードを変更しました。',
+  });
+};
+
 const handleSignup = async (event) => {
   event.preventDefault();
   if (!state.user?.is_admin) {
@@ -806,7 +887,11 @@ const bindEvents = () => {
   }
 
   if (elements.chatForm) elements.chatForm.addEventListener('submit', handleChatSubmit);
+  if (elements.accountPasswordForm) elements.accountPasswordForm.addEventListener('submit', handleAccountPasswordChange);
   if (elements.signupForm) elements.signupForm.addEventListener('submit', handleSignup);
+  if (elements.adminSelfPasswordForm) {
+    elements.adminSelfPasswordForm.addEventListener('submit', handleAdminSelfPasswordChange);
+  }
   if (elements.adminRefreshButton) {
     elements.adminRefreshButton.addEventListener('click', loadAdminUsers);
   }
@@ -852,12 +937,25 @@ const bindEvents = () => {
           showStatus(error.message || 'パスワード再設定に失敗しました。', 'danger');
         }
       }
+
+      if (action === 'promote') {
+        try {
+          await apiFetch(`/api/admin/users/${userId}/role`, {
+            method: 'PATCH',
+            body: JSON.stringify({ role: 'admin' }),
+          });
+          await loadAdminUsers();
+          showStatus('admin権限を付与しました。', 'success');
+        } catch (error) {
+          showStatus(error.message || 'admin権限の付与に失敗しました。', 'danger');
+        }
+      }
     });
   }
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '');
-    if (view === 'chat' || view === 'generate' || view === 'admin') {
+    if (view === 'chat' || view === 'generate' || view === 'admin' || view === 'account') {
       setView(view);
     }
   });
@@ -901,7 +999,7 @@ const bootstrapAppData = async () => {
   renderResult(state.lastResult);
 
   const initialView = window.location.hash.replace('#', '') || 'generate';
-  if (initialView === 'chat' || initialView === 'generate' || initialView === 'admin') {
+  if (initialView === 'chat' || initialView === 'generate' || initialView === 'admin' || initialView === 'account') {
     setView(initialView);
   }
 };

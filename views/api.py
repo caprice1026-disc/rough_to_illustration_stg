@@ -260,6 +260,28 @@ def logout():
     return _json({"ok": True})
 
 
+@api_bp.patch("/users/me/password")
+@login_required
+def update_my_password():
+    data = _extract_payload()
+    if not data:
+        data = request.form.to_dict()
+
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    if not current_password or not new_password:
+        return _error("現在のパスワードと新しいパスワードを入力してください。", 400)
+    if not current_user.check_password(current_password):
+        return _error("現在のパスワードが正しくありません。", 400)
+    if current_password == new_password:
+        return _error("新しいパスワードは現在のパスワードと異なる内容を指定してください。", 400)
+
+    current_user.set_password(new_password)
+    db.session.add(current_user)
+    db.session.commit()
+    return _json({"ok": True})
+
+
 @api_bp.post("/auth/signup")
 @login_required
 def signup():
@@ -372,8 +394,32 @@ def admin_reset_password(user_id: int):
     user = User.query.filter_by(id=user_id).first()
     if not user:
         return _error("対象ユーザーが見つかりません。", 404)
+    if user.id == current_user.id:
+        return _error("自分自身のパスワード変更はアカウント設定から実行してください。", 400)
 
     user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    return _json({"user": _serialize_admin_user(user)})
+
+
+@api_bp.patch("/admin/users/<int:user_id>/role")
+@login_required
+def admin_update_user_role(user_id: int):
+    error = _require_admin()
+    if error:
+        return error
+
+    data = _extract_payload()
+    role = (data.get("role") or "").strip()
+    if role != "admin":
+        return _error("role には admin のみ指定できます。", 400)
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return _error("対象ユーザーが見つかりません。", 404)
+
+    user.role = "admin"
     db.session.add(user)
     db.session.commit()
     return _json({"user": _serialize_admin_user(user)})
