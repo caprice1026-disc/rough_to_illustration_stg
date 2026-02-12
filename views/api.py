@@ -4,6 +4,7 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any
 
+from google.genai.errors import APIError
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
@@ -26,8 +27,35 @@ def _json(payload: dict[str, Any], status: int = 200):
     return jsonify(payload), status
 
 
-def _error(message: str, status: int = 400):
-    return _json({"error": message}, status)
+def _error(message: str, status: int = 400, *, error_code: str | None = None):
+    payload: dict[str, Any] = {"error": message}
+    if error_code:
+        payload["error_code"] = error_code
+    return _json(payload, status)
+
+
+def _is_gemini_overloaded_error(exc: Exception) -> bool:
+    if not isinstance(exc, APIError):
+        return False
+
+    code = getattr(exc, "code", None)
+    status = str(getattr(exc, "status", "") or "").upper()
+    message = str(getattr(exc, "message", "") or "").lower()
+    return code == 503 or status == "UNAVAILABLE" or "overloaded" in message
+
+
+def _handle_unexpected_runtime_error(exc: Exception):
+    if _is_gemini_overloaded_error(exc):
+        return _error(
+            "現在Geminiが混み合っています。少し時間をおいてから再試行してください。",
+            503,
+            error_code="gemini_overloaded",
+        )
+    return _error(
+        "システムエラーが発生しました。管理者にお問い合わせください。",
+        500,
+        error_code="internal_server_error_contact_admin",
+    )
 
 
 def _serialize_user(user: User) -> dict[str, Any]:
@@ -549,7 +577,7 @@ def create_generation():
         return _error("APIキーが設定されていません。", 400)
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("Image generation failed: %s", exc)
-        return _error("画像生成に失敗しました。", 500)
+        return _handle_unexpected_runtime_error(exc)
 
     return _json(
         {
@@ -723,7 +751,7 @@ def chat_messages(session_id: int):
         return _error(str(exc), 400)
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("Chat handling failed: %s", exc)
-        return _error("チャット処理に失敗しました。", 500)
+        return _handle_unexpected_runtime_error(exc)
 
     return _json({"assistant": _serialize_chat_message(assistant_message)})
 

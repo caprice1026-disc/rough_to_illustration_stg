@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from google.genai.errors import ServerError
 
 from app import create_app
 from extensions import db
@@ -118,3 +119,65 @@ def test_text_chat_accepts_json_payload(client, app, monkeypatch):
     assert response.status_code == 200
     payload = json.loads(response.data)
     assert payload["assistant"]["text"] == "json reply"
+
+
+def test_text_chat_returns_503_when_gemini_is_overloaded(client, app, monkeypatch):
+    login(client)
+
+    with app.app_context():
+        session = ChatSession(user_id=User.query.first().id, title="譁ｰ縺励＞繝√Ε繝・ヨ")
+        db.session.add(session)
+        db.session.commit()
+        session_id = session.id
+
+    overloaded_error = ServerError(
+        503,
+        {
+            "error": {
+                "code": 503,
+                "message": "The model is overloaded. Please try again later.",
+                "status": "UNAVAILABLE",
+            }
+        },
+        None,
+    )
+
+    def fake_generate_reply(*args, **kwargs):
+        raise overloaded_error
+
+    monkeypatch.setattr("services.chat_service.generate_multimodal_reply", fake_generate_reply)
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        data={"mode_id": "text_chat", "message": "テスト"},
+        headers={"X-CSRFToken": get_csrf_token(client)},
+    )
+    assert response.status_code == 503
+    payload = json.loads(response.data)
+    assert payload["error"] == "現在Geminiが混み合っています。少し時間をおいてから再試行してください。"
+    assert payload["error_code"] == "gemini_overloaded"
+
+
+def test_text_chat_returns_500_with_contact_message_for_unexpected_error(client, app, monkeypatch):
+    login(client)
+
+    with app.app_context():
+        session = ChatSession(user_id=User.query.first().id, title="譁ｰ縺励＞繝√Ε繝・ヨ")
+        db.session.add(session)
+        db.session.commit()
+        session_id = session.id
+
+    def fake_generate_reply(*args, **kwargs):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr("services.chat_service.generate_multimodal_reply", fake_generate_reply)
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        data={"mode_id": "text_chat", "message": "テスト"},
+        headers={"X-CSRFToken": get_csrf_token(client)},
+    )
+    assert response.status_code == 500
+    payload = json.loads(response.data)
+    assert payload["error"] == "システムエラーが発生しました。管理者にお問い合わせください。"
+    assert payload["error_code"] == "internal_server_error_contact_admin"
