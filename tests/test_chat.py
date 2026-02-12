@@ -125,7 +125,7 @@ def test_text_chat_returns_503_when_gemini_is_overloaded(client, app, monkeypatc
     login(client)
 
     with app.app_context():
-        session = ChatSession(user_id=User.query.first().id, title="譁ｰ縺励＞繝√Ε繝・ヨ")
+        session = ChatSession(user_id=User.query.first().id, title="新しいチャット")
         db.session.add(session)
         db.session.commit()
         session_id = session.id
@@ -162,7 +162,7 @@ def test_text_chat_returns_500_with_contact_message_for_unexpected_error(client,
     login(client)
 
     with app.app_context():
-        session = ChatSession(user_id=User.query.first().id, title="譁ｰ縺励＞繝√Ε繝・ヨ")
+        session = ChatSession(user_id=User.query.first().id, title="新しいチャット")
         db.session.add(session)
         db.session.commit()
         session_id = session.id
