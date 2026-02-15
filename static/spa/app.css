@@ -60,19 +60,24 @@
 }
 
 .image-viewer-close-btn {
-  --bs-btn-close-opacity: 1;
-  --bs-btn-close-hover-opacity: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   background: #d62839;
+  color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  padding: 0.45rem;
-  background-size: 0.72rem;
-  box-sizing: content-box;
+  line-height: 1;
+  font-size: 1rem;
 }
 
 .image-viewer-close-btn:hover,
 .image-viewer-close-btn:focus-visible {
   background: #e63946;
+  color: #fff;
   border-color: rgba(255, 255, 255, 0.45);
   outline: none;
 }
