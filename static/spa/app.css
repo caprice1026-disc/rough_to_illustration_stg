@@ -59,6 +59,24 @@
   background: rgba(10, 14, 22, 0.9);
 }
 
+.image-viewer-close-btn {
+  --bs-btn-close-opacity: 1;
+  --bs-btn-close-hover-opacity: 1;
+  background: #d62839;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 0.45rem;
+  background-size: 0.72rem;
+  box-sizing: content-box;
+}
+
+.image-viewer-close-btn:hover,
+.image-viewer-close-btn:focus-visible {
+  background: #e63946;
+  border-color: rgba(255, 255, 255, 0.45);
+  outline: none;
+}
+
 .image-viewer-modal-content {
   background: rgba(8, 11, 18, 0.96);
 }

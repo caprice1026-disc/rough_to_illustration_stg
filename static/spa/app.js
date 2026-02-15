@@ -56,6 +56,7 @@ const cacheElements = () => {
   elements.resultPlaceholder = document.getElementById('resultPlaceholder');
   elements.downloadLink = document.getElementById('downloadLink');
   elements.imageViewerModal = document.getElementById('imageViewerModal');
+  elements.imageViewerModalBody = document.querySelector('#imageViewerModal .image-viewer-modal-body');
   elements.imageViewerImage = document.getElementById('imageViewerImage');
   elements.presetSelect = document.getElementById('presetSelect');
   elements.applyPreset = document.getElementById('applyPreset');
@@ -216,6 +217,52 @@ const initResultImageViewer = () => {
     state.imageViewerModal = window.bootstrap.Modal.getOrCreateInstance(elements.imageViewerModal);
     elements.imageViewerModal.addEventListener('hidden.bs.modal', () => {
       if (elements.imageViewerImage) elements.imageViewerImage.removeAttribute('src');
+    });
+  }
+
+  const isClickInsideRenderedImage = (event) => {
+    if (!elements.imageViewerImage) return false;
+    if (event.target !== elements.imageViewerImage) return false;
+
+    const image = elements.imageViewerImage;
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const relativeX = event.clientX - rect.left;
+    const relativeY = event.clientY - rect.top;
+
+    const naturalWidth = image.naturalWidth || 0;
+    const naturalHeight = image.naturalHeight || 0;
+    if (!naturalWidth || !naturalHeight) return true;
+
+    const imageAspect = naturalWidth / naturalHeight;
+    const boxAspect = rect.width / rect.height;
+
+    let renderedWidth = rect.width;
+    let renderedHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (boxAspect > imageAspect) {
+      renderedWidth = rect.height * imageAspect;
+      offsetX = (rect.width - renderedWidth) / 2;
+    } else {
+      renderedHeight = rect.width / imageAspect;
+      offsetY = (rect.height - renderedHeight) / 2;
+    }
+
+    return (
+      relativeX >= offsetX &&
+      relativeX <= offsetX + renderedWidth &&
+      relativeY >= offsetY &&
+      relativeY <= offsetY + renderedHeight
+    );
+  };
+
+  if (elements.imageViewerModalBody) {
+    elements.imageViewerModalBody.addEventListener('click', (event) => {
+      if (!state.imageViewerModal) return;
+      if (isClickInsideRenderedImage(event)) return;
+      state.imageViewerModal.hide();
     });
   }
   if (!elements.resultImage) return;
