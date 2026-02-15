@@ -79,6 +79,10 @@
                           <p class="section-description mb-0">ラフ画像を選択してください。</p>
                         </div>
                         <input class="form-control" id="roughImageInput" name="rough_image" type="file" accept="image/png, image/jpeg">
+                        <div id="roughUploadPreview" class="upload-preview d-none mt-3">
+                          <img id="roughUploadPreviewImage" class="upload-preview-image" alt="ラフ画像プレビュー">
+                          <div id="roughUploadPreviewMeta" class="small text-white-50 mt-2"></div>
+                        </div>
                       </div>
                       <div class="section-card">
                         <div class="section-header">
@@ -102,6 +106,10 @@
                         <input class="form-control" id="referenceImageInput" name="reference_image" type="file" accept="image/png, image/jpeg">
                         <label class="form-label mt-3" for="referenceRoughInput">ラフ画像</label>
                         <input class="form-control" id="referenceRoughInput" name="rough_image" type="file" accept="image/png, image/jpeg">
+                        <div id="referenceRoughUploadPreview" class="upload-preview d-none mt-3">
+                          <img id="referenceRoughPreviewImage" class="upload-preview-image" alt="参照モードのラフ画像プレビュー">
+                          <div id="referenceRoughPreviewMeta" class="small text-white-50 mt-2"></div>
+                        </div>
                       </div>
                       <div class="section-card">
                         <div class="section-header">
@@ -176,7 +184,8 @@
                 <div class="card-body">
                   <h3 class="card-title">生成プレビュー</h3>
                   <div class="text-white-50" id="resultPlaceholder">まだ生成結果がありません。</div>
-                  <img id="resultImage" class="img-fluid rounded d-none mt-3" alt="生成結果プレビュー">
+                  <img id="resultImage" class="img-fluid rounded d-none mt-3" alt="生成結果プレビュー" role="button" tabindex="0" aria-label="生成結果を拡大表示">
+                  <div id="resultImageHint" class="small text-white-50 d-none mt-2">画像をクリックすると拡大表示できます。</div>
                   <div class="d-grid gap-2 mt-3">
                     <a class="btn btn-outline-light d-none" id="downloadLink" download="generated_image.png"><i class="bi bi-download me-1"></i> ダウンロード</a>
                   </div>
@@ -404,6 +413,22 @@
           <div class="modal-footer border-0">
             <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">閉じる</button>
             <button type="button" class="btn btn-primary" id="maskApplyButton">マスクを適用</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="imageViewerModal" tabindex="-1" aria-labelledby="imageViewerLabel" aria-hidden="true">
+      <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content image-viewer-modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="imageViewerLabel">生成画像の拡大表示</h5>
+            <button type="button" class="btn image-viewer-close-btn ms-auto" data-bs-dismiss="modal" aria-label="閉じる">
+              <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="modal-body image-viewer-modal-body">
+            <img id="imageViewerImage" class="image-viewer-image" alt="生成画像の拡大表示">
           </div>
         </div>
       </div>

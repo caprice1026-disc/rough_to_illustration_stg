@@ -66,7 +66,11 @@ def test_index_page_loads_for_logged_in_user(client):
     login(client)
     response = client.get("/")
     assert response.status_code == 200
-    assert "static/spa/app.js" in response.get_data(as_text=True)
+    page = response.get_data(as_text=True)
+    assert "static/spa/app.js" in page
+    assert 'id="imageViewerModal"' in page
+    assert 'id="roughUploadPreviewImage"' in page
+    assert 'id="referenceRoughPreviewImage"' in page
 
 
 def test_text_chat_persists_messages(client, app, monkeypatch):

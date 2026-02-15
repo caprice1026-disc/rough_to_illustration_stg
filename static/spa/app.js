@@ -11,6 +11,8 @@
   csrfToken: null,
   adminUsers: [],
   chatEnabled: true,
+  uploadPreviewObjectUrls: { rough: null, referenceRough: null },
+  imageViewerModal: null,
 };
 
 const elements = {};
@@ -41,9 +43,21 @@ const cacheElements = () => {
   elements.generationOptions = document.getElementById('generationOptions');
   elements.aspectRatioSelect = document.getElementById('aspectRatioSelect');
   elements.resolutionSelect = document.getElementById('resolutionSelect');
+  elements.roughImageInput = document.getElementById('roughImageInput');
+  elements.referenceRoughInput = document.getElementById('referenceRoughInput');
+  elements.roughUploadPreview = document.getElementById('roughUploadPreview');
+  elements.roughUploadPreviewImage = document.getElementById('roughUploadPreviewImage');
+  elements.roughUploadPreviewMeta = document.getElementById('roughUploadPreviewMeta');
+  elements.referenceRoughUploadPreview = document.getElementById('referenceRoughUploadPreview');
+  elements.referenceRoughPreviewImage = document.getElementById('referenceRoughPreviewImage');
+  elements.referenceRoughPreviewMeta = document.getElementById('referenceRoughPreviewMeta');
   elements.resultImage = document.getElementById('resultImage');
+  elements.resultImageHint = document.getElementById('resultImageHint');
   elements.resultPlaceholder = document.getElementById('resultPlaceholder');
   elements.downloadLink = document.getElementById('downloadLink');
+  elements.imageViewerModal = document.getElementById('imageViewerModal');
+  elements.imageViewerModalBody = document.querySelector('#imageViewerModal .image-viewer-modal-body');
+  elements.imageViewerImage = document.getElementById('imageViewerImage');
   elements.presetSelect = document.getElementById('presetSelect');
   elements.applyPreset = document.getElementById('applyPreset');
   elements.deletePreset = document.getElementById('deletePreset');
@@ -104,6 +118,160 @@ const showStatus = (message, type = 'info') => {
 const clearStatus = () => {
   if (!elements.statusArea) return;
   elements.statusArea.innerHTML = '';
+};
+
+const formatFileSize = (byteSize) => {
+  if (!Number.isFinite(byteSize) || byteSize < 0) return '0 B';
+  if (byteSize < 1024) return `${byteSize} B`;
+  if (byteSize < 1024 * 1024) return `${(byteSize / 1024).toFixed(1)} KB`;
+  return `${(byteSize / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const releasePreviewObjectUrl = (slot) => {
+  const currentUrl = state.uploadPreviewObjectUrls[slot];
+  if (!currentUrl) return;
+  URL.revokeObjectURL(currentUrl);
+  state.uploadPreviewObjectUrls[slot] = null;
+};
+
+const disposeUploadPreviewUrls = () => {
+  releasePreviewObjectUrl('rough');
+  releasePreviewObjectUrl('referenceRough');
+};
+
+const resetUploadPreview = ({ previewWrap, previewImage, previewMeta, slot }) => {
+  releasePreviewObjectUrl(slot);
+  if (previewImage) previewImage.removeAttribute('src');
+  if (previewMeta) previewMeta.textContent = '';
+  if (previewWrap) previewWrap.classList.add('d-none');
+};
+
+const updateUploadPreview = ({ file, previewWrap, previewImage, previewMeta, slot }) => {
+  if (!file || !previewWrap || !previewImage) {
+    resetUploadPreview({ previewWrap, previewImage, previewMeta, slot });
+    return;
+  }
+  releasePreviewObjectUrl(slot);
+  const objectUrl = URL.createObjectURL(file);
+  state.uploadPreviewObjectUrls[slot] = objectUrl;
+  previewImage.src = objectUrl;
+  if (previewMeta) {
+    previewMeta.textContent = `${file.name} (${formatFileSize(file.size)})`;
+  }
+  previewWrap.classList.remove('d-none');
+};
+
+const bindRoughUploadPreview = ({ input, previewWrap, previewImage, previewMeta, slot }) => {
+  if (!input) return;
+  const sync = () => {
+    const [file] = input.files || [];
+    updateUploadPreview({
+      file,
+      previewWrap,
+      previewImage,
+      previewMeta,
+      slot,
+    });
+  };
+  input.addEventListener('change', sync);
+  sync();
+};
+
+const initRoughUploadPreviews = () => {
+  bindRoughUploadPreview({
+    input: elements.roughImageInput,
+    previewWrap: elements.roughUploadPreview,
+    previewImage: elements.roughUploadPreviewImage,
+    previewMeta: elements.roughUploadPreviewMeta,
+    slot: 'rough',
+  });
+  bindRoughUploadPreview({
+    input: elements.referenceRoughInput,
+    previewWrap: elements.referenceRoughUploadPreview,
+    previewImage: elements.referenceRoughPreviewImage,
+    previewMeta: elements.referenceRoughPreviewMeta,
+    slot: 'referenceRough',
+  });
+  window.addEventListener('beforeunload', disposeUploadPreviewUrls);
+};
+
+const openResultImageViewer = () => {
+  if (!elements.resultImage || elements.resultImage.classList.contains('d-none')) return;
+  const src = elements.resultImage.getAttribute('src') || '';
+  if (!src || !elements.imageViewerImage) return;
+
+  elements.imageViewerImage.src = src;
+  elements.imageViewerImage.alt = elements.resultImage.alt || '生成画像の拡大表示';
+
+  if (state.imageViewerModal) {
+    state.imageViewerModal.show();
+    return;
+  }
+  if (!window.bootstrap || !elements.imageViewerModal) return;
+  state.imageViewerModal = window.bootstrap.Modal.getOrCreateInstance(elements.imageViewerModal);
+  state.imageViewerModal.show();
+};
+
+const initResultImageViewer = () => {
+  if (window.bootstrap && elements.imageViewerModal) {
+    state.imageViewerModal = window.bootstrap.Modal.getOrCreateInstance(elements.imageViewerModal);
+    elements.imageViewerModal.addEventListener('hidden.bs.modal', () => {
+      if (elements.imageViewerImage) elements.imageViewerImage.removeAttribute('src');
+    });
+  }
+
+  const isClickInsideRenderedImage = (event) => {
+    if (!elements.imageViewerImage) return false;
+    if (event.target !== elements.imageViewerImage) return false;
+
+    const image = elements.imageViewerImage;
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const relativeX = event.clientX - rect.left;
+    const relativeY = event.clientY - rect.top;
+
+    const naturalWidth = image.naturalWidth || 0;
+    const naturalHeight = image.naturalHeight || 0;
+    if (!naturalWidth || !naturalHeight) return true;
+
+    const imageAspect = naturalWidth / naturalHeight;
+    const boxAspect = rect.width / rect.height;
+
+    let renderedWidth = rect.width;
+    let renderedHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (boxAspect > imageAspect) {
+      renderedWidth = rect.height * imageAspect;
+      offsetX = (rect.width - renderedWidth) / 2;
+    } else {
+      renderedHeight = rect.width / imageAspect;
+      offsetY = (rect.height - renderedHeight) / 2;
+    }
+
+    return (
+      relativeX >= offsetX &&
+      relativeX <= offsetX + renderedWidth &&
+      relativeY >= offsetY &&
+      relativeY <= offsetY + renderedHeight
+    );
+  };
+
+  if (elements.imageViewerModalBody) {
+    elements.imageViewerModalBody.addEventListener('click', (event) => {
+      if (!state.imageViewerModal) return;
+      if (isClickInsideRenderedImage(event)) return;
+      state.imageViewerModal.hide();
+    });
+  }
+  if (!elements.resultImage) return;
+  elements.resultImage.addEventListener('click', openResultImageViewer);
+  elements.resultImage.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openResultImageViewer();
+  });
 };
 
 const fetchCsrfToken = async () => {
@@ -177,6 +345,7 @@ const setLoggedOut = () => {
   state.csrfToken = null;
   state.adminUsers = [];
   state.chatEnabled = true;
+  disposeUploadPreviewUrls();
   clearStatus();
   renderLogin();
 };
@@ -413,8 +582,12 @@ const buildPresetPayload = () => {
 const renderResult = (result) => {
   if (!elements.resultImage || !elements.resultPlaceholder || !elements.downloadLink) return;
   if (!result) {
+    elements.resultImage.removeAttribute('src');
     elements.resultImage.classList.add('d-none');
+    elements.resultImage.setAttribute('aria-disabled', 'true');
+    elements.resultImage.tabIndex = -1;
     elements.resultPlaceholder.classList.remove('d-none');
+    if (elements.resultImageHint) elements.resultImageHint.classList.add('d-none');
     elements.downloadLink.classList.add('d-none');
     return;
   }
@@ -422,6 +595,9 @@ const renderResult = (result) => {
   elements.resultPlaceholder.classList.add('d-none');
   elements.resultImage.src = result.url || '';
   elements.resultImage.classList.remove('d-none');
+  elements.resultImage.setAttribute('aria-disabled', 'false');
+  elements.resultImage.tabIndex = 0;
+  if (elements.resultImageHint) elements.resultImageHint.classList.remove('d-none');
 
   const ext = result.mime_type === 'image/jpeg' ? 'jpg' : 'png';
   elements.downloadLink.href = result.download_url || result.url || '#';
@@ -1168,6 +1344,8 @@ const initMaskEditor = () => {
 
 const initApp = async () => {
   cacheElements();
+  initRoughUploadPreviews();
+  initResultImageViewer();
   bindEvents();
   initMaskEditor();
 
